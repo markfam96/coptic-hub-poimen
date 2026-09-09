@@ -39,3 +39,27 @@ export interface JournalIncident {
 
 // Map of sinId -> frequency for everything currently checked in the examination.
 export type ExamChecks = Record<string, SinFrequency>;
+
+// A question to bring to the Father of Confession — spiritual guidance sought,
+// not a sin confessed, so it lives beside the journal rather than under an
+// examination domain. Shown in the confession notes so it isn't forgotten in
+// the moment.
+export interface GuidanceNote {
+  id: string;
+  text: string;                // the question, in the user's words (encrypted at rest)
+  createdAt: number;           // epoch ms
+}
+
+// A snapshot of the confession notes as they stood when a confession was
+// recorded — what was checked in the examination, what the journal held, and
+// the questions brought. Kept ONLY on this device (encrypted, never synced) so
+// the user can look back over months and see what keeps returning and what
+// has fallen away. One per calendar day; recording twice replaces.
+export interface ConfessionRecord {
+  id: string;
+  date: string;                // local YYYY-MM-DD
+  recordedAt: number;          // epoch ms
+  exam: ExamChecks;
+  incidents: JournalIncident[];
+  guidance: GuidanceNote[];
+}

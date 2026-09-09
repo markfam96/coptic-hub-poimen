@@ -10,10 +10,12 @@
 // data from bleeding into another's on a shared device.
 import { userStorage as AsyncStorage } from '@/lib/storage';
 import { encryptNote, decryptNote } from '@/lib/crypto';
-import type { JournalIncident, IncidentCategory, ExamChecks } from './types';
+import type { JournalIncident, IncidentCategory, ExamChecks, GuidanceNote, ConfessionRecord } from './types';
 
 const K_INCIDENTS = 'poimen.confession.incidents';
 const K_EXAM      = 'poimen.confession.exam';
+const K_GUIDANCE  = 'poimen.confession.guidance';
+const K_HISTORY   = 'poimen.confession.history';
 
 // A collision-resistant id that doesn't rely on crypto (Hermes-safe).
 function makeId(): string {
@@ -80,6 +82,77 @@ export async function deleteIncident(id: string): Promise<JournalIncident[]> {
 
 export async function clearIncidents(): Promise<void> {
   try { await AsyncStorage.removeItem(K_INCIDENTS); } catch {}
+}
+
+// ─── Spiritual guidance questions ──────────────────────────────────────────────
+// Same encrypted-at-rest, device-only treatment as the journal; cleared with it
+// when the notes for a confession are deleted.
+
+export async function loadGuidance(): Promise<GuidanceNote[]> {
+  const list = await readEncrypted<GuidanceNote[]>(K_GUIDANCE, []);
+  if (!Array.isArray(list)) return [];
+  // Oldest first: questions are asked in the order they came to mind.
+  return [...list].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addGuidance(text: string): Promise<GuidanceNote[]> {
+  const clean = text.trim();
+  const list = await loadGuidance();
+  if (!clean) return list;
+  const next = [...list, { id: makeId(), text: clean, createdAt: Date.now() }];
+  await writeEncrypted(K_GUIDANCE, next);
+  return next;
+}
+
+export async function deleteGuidance(id: string): Promise<GuidanceNote[]> {
+  const list = await loadGuidance();
+  const next = list.filter(g => g.id !== id);
+  await writeEncrypted(K_GUIDANCE, next);
+  return next;
+}
+
+export async function clearGuidance(): Promise<void> {
+  try { await AsyncStorage.removeItem(K_GUIDANCE); } catch {}
+}
+
+// ─── Confession history ────────────────────────────────────────────────────────
+// Snapshots taken at "Record this confession". Encrypted like everything else
+// here and NEVER synced — this is the one place a pattern of sins is written
+// down over time, and it stays on the phone. Deleting the period's notes
+// after a confession does not touch it; the user removes records here.
+
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export async function loadHistory(): Promise<ConfessionRecord[]> {
+  const list = await readEncrypted<ConfessionRecord[]>(K_HISTORY, []);
+  if (!Array.isArray(list)) return [];
+  // Newest first.
+  return [...list].sort((a, b) => b.recordedAt - a.recordedAt);
+}
+
+// Snapshot the notes as they stand right now. One record per calendar day:
+// tapping Record twice in a day replaces rather than duplicates, matching how
+// the confession-dates store collapses same-day entries.
+export async function archiveConfession(): Promise<ConfessionRecord[]> {
+  const [exam, incidents, guidance, list] = await Promise.all([
+    loadExam(), loadIncidents(), loadGuidance(), loadHistory(),
+  ]);
+  const now = new Date();
+  const record: ConfessionRecord = {
+    id: makeId(), date: localDay(now), recordedAt: now.getTime(),
+    exam, incidents, guidance,
+  };
+  const next = [record, ...list.filter(r => r.date !== record.date)];
+  await writeEncrypted(K_HISTORY, next);
+  return next;
+}
+
+export async function deleteHistoryRecord(id: string): Promise<ConfessionRecord[]> {
+  const list = await loadHistory();
+  const next = list.filter(r => r.id !== id);
+  await writeEncrypted(K_HISTORY, next);
+  return next;
 }
 
 // ─── Examination of conscience ─────────────────────────────────────────────────
