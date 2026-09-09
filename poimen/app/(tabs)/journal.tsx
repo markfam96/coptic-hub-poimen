@@ -31,6 +31,24 @@ const DEMO_ENTRIES: JournalEntry[] = [
   { id: 'e3', created_at: '2026-05-22', title: 'After confession', reflection: 'Feeling lighter. Beginning the 40-day Psalm plan. Starting with Psalm 50.' },
 ];
 
+// A blessing: something God did, dated, kept so it can be read back in a
+// harder season. Deliberately one field — a line, not an essay — so the bar
+// to writing one down stays low.
+interface Blessing {
+  id: string;
+  created_at: string;
+  text: string;
+}
+
+const DEMO_BLESSINGS: Blessing[] = [
+  { id: 'b1', created_at: '2026-06-02', text: 'The baby slept through the night for the first time — and so did we.' },
+  { id: 'b2', created_at: '2026-05-18', text: 'Abouna called just to check in, the day I most needed it.' },
+  { id: 'b3', created_at: '2026-04-27', text: 'The job offer came through after months of waiting. Glory to God.' },
+];
+
+// Kept short on the page; the full list unfolds on request.
+const BLESSINGS_PREVIEW = 5;
+
 function fmtDate(iso: string, long = false): string {
   // Date-only strings ("2026-06-04") parse as UTC midnight and can display as
   // the previous day locally — anchor them to local noon so the calendar day
@@ -79,9 +97,17 @@ export default function JournalScreen() {
   const [scripture, setScripture] = useState('');
   const [prayerIntention, setPrayerIntention] = useState('');
 
+  // Blessings — its own cloud row (journal-blessings), so the entries
+  // payload keeps its shape.
+  const [blessings, setBlessings] = useState<Blessing[]>([]);
+  const [blessingText, setBlessingText] = useState('');
+  const [savingBlessing, setSavingBlessing] = useState(false);
+  const [showAllBlessings, setShowAllBlessings] = useState(false);
+
   useEffect(() => {
     if (demoMode) {
       setEntries(DEMO_ENTRIES);
+      setBlessings(DEMO_BLESSINGS);
     } else {
       load();
     }
@@ -90,9 +116,41 @@ export default function JournalScreen() {
   async function load() {
     if (!user) return;
     setLoading(true);
-    const entryData = await db.getAgentProgress(user.id, 'journal-entries');
+    const [entryData, blessingData] = await Promise.all([
+      db.getAgentProgress(user.id, 'journal-entries'),
+      db.getAgentProgress(user.id, 'journal-blessings'),
+    ]);
     if (entryData?.entries) setEntries(entryData.entries);
+    if (Array.isArray(blessingData?.blessings)) setBlessings(blessingData.blessings);
     setLoading(false);
+  }
+
+  async function saveBlessings(next: Blessing[]) {
+    if (!user || demoMode) return;
+    await db.upsertAgentProgress({
+      user_id: user.id, agent_slug: 'journal-blessings',
+      payload: { blessings: next },
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  async function addBlessing() {
+    const text = blessingText.trim();
+    if (!text || savingBlessing) return;
+    setSavingBlessing(true);
+    const updated = [{ id: Date.now().toString(), created_at: new Date().toISOString(), text }, ...blessings];
+    setBlessings(updated);
+    await saveBlessings(updated);
+    setBlessingText('');
+    setSavingBlessing(false);
+  }
+
+  function deleteBlessing(id: string) {
+    confirmDestructive('Remove blessing', 'Remove this from your blessings?', 'Remove', () => {
+      const updated = blessings.filter(b => b.id !== id);
+      setBlessings(updated);
+      saveBlessings(updated);
+    });
   }
 
   async function saveEntries(newEntries: JournalEntry[]) {
@@ -220,6 +278,60 @@ export default function JournalScreen() {
           )}
         </Card>
 
+        {/* Blessings — a running record of what God has done, to be read back
+            later. Newest first; only the latest few show until unfolded. */}
+        <Card title={`Blessings${blessings.length ? ` (${blessings.length})` : ''}`} titleIcon="✧">
+          <Text style={styles.blessingIntro}>
+            Write down what God has done — an answered prayer, a kindness, a door that opened.
+            In a harder season, come back and read them.
+          </Text>
+          <TextInput
+            style={[styles.textarea, { minHeight: 64 }]}
+            multiline
+            placeholder="e.g. Mom's surgery went well — thank You, Lord."
+            placeholderTextColor={colors.faint}
+            value={blessingText}
+            onChangeText={setBlessingText}
+          />
+          <TouchableOpacity
+            style={[styles.btnGoldFull, (!blessingText.trim() || savingBlessing) && styles.btnDisabled]}
+            onPress={addBlessing}
+            disabled={!blessingText.trim() || savingBlessing}
+          >
+            {savingBlessing ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.btnGoldFullText}>ADD BLESSING</Text>}
+          </TouchableOpacity>
+
+          {loading ? null : blessings.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>✧</Text>
+              <Text style={styles.emptyTitle}>Nothing recorded yet</Text>
+              <Text style={styles.emptyBody}>Every blessing you add stays here to be read again.</Text>
+            </View>
+          ) : (
+            <View style={{ marginTop: 16 }}>
+              {(showAllBlessings ? blessings : blessings.slice(0, BLESSINGS_PREVIEW)).map(b => (
+                <View key={b.id} style={styles.blessingRow}>
+                  <Text style={styles.blessingMark}>✧</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.blessingDate}>{fmtDate(b.created_at)}</Text>
+                    <Text style={styles.blessingText}>{b.text}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => deleteBlessing(b.id)} hitSlop={10}>
+                    <Text style={styles.blessingRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {blessings.length > BLESSINGS_PREVIEW && (
+                <TouchableOpacity onPress={() => setShowAllBlessings(v => !v)} hitSlop={6}>
+                  <Text style={styles.promptExpand}>
+                    {showAllBlessings ? 'Show fewer ▴' : `Show all ${blessings.length} blessings ▾`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </Card>
+
         {/* Today's Prompt — the Gospel of the day from the Coptic lectionary
             (Katameros), with a static fallback when the reading can't load. */}
         <Card title="Today's Prompt" titleIcon="◇">
@@ -295,6 +407,14 @@ const styles = lazyThemed(() => StyleSheet.create({
   entryChevron: { fontSize: 18, color: colors.gold, paddingHorizontal: 4 },
 
   divider: { height: 1, backgroundColor: colors.border },
+
+  // Blessings
+  blessingIntro: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, lineHeight: 18, marginBottom: 12 },
+  blessingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border },
+  blessingMark: { fontSize: 14, color: colors.gold, marginTop: 2 },
+  blessingDate: { fontFamily: fonts.latoBold, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.gold, opacity: 0.7, marginBottom: 3 },
+  blessingText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.cream, lineHeight: 19 },
+  blessingRemove: { fontSize: 15, color: colors.muted, paddingHorizontal: 2 },
 
   emptyState: { alignItems: 'center', paddingVertical: 20, gap: 6 },
   emptyIcon: { fontSize: 28, color: colors.muted, opacity: 0.4 },
