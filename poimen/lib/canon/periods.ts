@@ -24,25 +24,30 @@ export const parseDate = (s: string) => new Date(`${s}T12:00:00`);
 const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const DAY = 86400000;
 
+// Translated wording for the two label functions below, keyed by frequency.
+// This module imports nothing, so the screen passes the table in
+// (S.canon.periodNouns / S.canon.periodUnits); without one the English stands.
+export type PeriodLabels = Partial<Record<Freq, string>>;
+
 // How the period reads in a label: "2 of 3 this month".
-export function periodNoun(freq: string): string {
+export function periodNoun(freq: string, labels: PeriodLabels = {}): string {
   switch (freq) {
-    case 'Every 2 weeks':  return 'fortnight';
-    case 'Monthly':        return 'month';
-    case 'Every 2 months': return '2 months';
-    case 'Quarterly':      return 'quarter';
-    default:               return 'week';
+    case 'Every 2 weeks':  return labels['Every 2 weeks'] ?? 'fortnight';
+    case 'Monthly':        return labels.Monthly ?? 'month';
+    case 'Every 2 months': return labels['Every 2 months'] ?? '2 months';
+    case 'Quarterly':      return labels.Quarterly ?? 'quarter';
+    default:               return labels.Weekly ?? 'week';
   }
 }
 
 // "× / week", "× / month" — the unit shown beside a stepper.
-export function periodUnit(freq: string): string {
+export function periodUnit(freq: string, labels: PeriodLabels = {}): string {
   switch (freq) {
-    case 'Every 2 weeks':  return '× / 2 weeks';
-    case 'Monthly':        return '× / month';
-    case 'Every 2 months': return '× / 2 months';
-    case 'Quarterly':      return '× / quarter';
-    default:               return '× / week';
+    case 'Every 2 weeks':  return labels['Every 2 weeks'] ?? '× / 2 weeks';
+    case 'Monthly':        return labels.Monthly ?? '× / month';
+    case 'Every 2 months': return labels['Every 2 months'] ?? '× / 2 months';
+    case 'Quarterly':      return labels.Quarterly ?? '× / quarter';
+    default:               return labels.Weekly ?? '× / week';
   }
 }
 

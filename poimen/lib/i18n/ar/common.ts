@@ -1,0 +1,85 @@
+import type { Localized } from '../core';
+import type { common as En } from '../en/common';
+
+export const common: Localized<typeof En> = {
+  appName: 'Nepsis',
+  tagline: 'رعاية رعوية متأصلة في التقليد الكنسي',
+
+  // Buttons
+  cancel: 'إلغاء',
+  save: 'حفظ',
+  saved: 'تم الحفظ',
+  saving: 'جارٍ الحفظ…',
+  delete: 'حذف',
+  remove: 'إزالة',
+  edit: 'تعديل',
+  done: 'تم',
+  close: 'إغلاق',
+  back: 'رجوع',
+  next: 'التالي',
+  continue: 'متابعة',
+  skip: 'تخطي',
+  retry: 'إعادة المحاولة',
+  tryAgain: 'حاول مرة أخرى',
+  ok: 'موافق',
+  yes: 'نعم',
+  no: 'لا',
+  confirm: 'تأكيد',
+  add: 'إضافة',
+  send: 'إرسال',
+  submit: 'إرسال',
+  search: 'بحث',
+  clear: 'مسح',
+  change: 'تغيير',
+  update: 'تحديث',
+  open: 'فتح',
+  view: 'عرض',
+  viewAll: 'عرض الكل',
+  showMore: 'عرض المزيد',
+  showLess: 'عرض أقل',
+  copy: 'نسخ',
+  copied: 'تم النسخ',
+  share: 'مشاركة',
+  signOut: 'تسجيل الخروج',
+
+  // States
+  loading: 'جارٍ التحميل…',
+  optional: 'اختياري',
+  required: 'مطلوب',
+  none: 'لا يوجد',
+  all: 'الكل',
+  on: 'مفعّل',
+  off: 'متوقف',
+  private: 'خاص',
+  never: 'أبدًا',
+  ongoing: 'مستمر',
+
+  // Time words
+  today: 'اليوم',
+  yesterday: 'أمس',
+  tomorrow: 'غدًا',
+  now: 'الآن',
+  days: { one: 'يوم واحد', two: 'يومان', few: '\u200F{n} أيام', many: '\u200F{n} يومًا', other: '\u200F{n} يوم' },
+  weeks: { one: 'أسبوع واحد', two: 'أسبوعان', few: '\u200F{n} أسابيع', many: '\u200F{n} أسبوعًا', other: '\u200F{n} أسبوع' },
+  months: { one: 'شهر واحد', two: 'شهران', few: '\u200F{n} أشهر', many: '\u200F{n} شهرًا', other: '\u200F{n} شهر' },
+  minutes: { one: 'دقيقة واحدة', two: 'دقيقتان', few: '\u200F{n} دقائق', many: '\u200F{n} دقيقة', other: '\u200F{n} دقيقة' },
+  hours: { one: 'ساعة واحدة', two: 'ساعتان', few: '\u200F{n} ساعات', many: '\u200F{n} ساعة', other: '\u200F{n} ساعة' },
+  daysAgo: { zero: 'اليوم', one: 'منذ يوم واحد', two: 'منذ يومين', few: 'منذ {n} أيام', many: 'منذ {n} يومًا', other: 'منذ {n} يوم' },
+
+  // Roles and people
+  roleCongregant: 'عضو',
+  roleServant: 'خادم',
+  rolePriest: 'كاهن',
+  roleAdmin: 'مشرف',
+  fatherOfConfession: 'أب الاعتراف',
+  yourFatherOfConfession: 'أب اعترافك',
+  sundaySchoolServant: 'خادم مدارس الأحد',
+  frPrefix: 'أبونا ',
+
+  // Errors
+  genericError: 'حدث خطأ ما. حاول مرة أخرى.',
+  networkError: 'تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.',
+  notFound: 'غير موجود',
+
+  scriptureInEnglish: 'هذا النص متاح حاليًا بالإنجليزية فقط.',
+};

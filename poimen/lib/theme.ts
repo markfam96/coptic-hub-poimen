@@ -16,6 +16,8 @@
 //  · `cream` is the primary text color (sepia ink in light mode).
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { isRTL } from './i18n';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -100,7 +102,7 @@ if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
 // object is built on first render, after applyTheme() has run.
 export function lazyThemed<T extends object>(factory: () => T): T {
   let cached: T | undefined;
-  const resolve = () => (cached ??= factory());
+  const resolve = () => (cached ??= localizeStyles(factory()));
   return new Proxy({} as T, {
     get: (_, p) => (resolve() as any)[p],
     has: (_, p) => p in (resolve() as any),
@@ -114,6 +116,99 @@ export function lazyThemed<T extends object>(factory: () => T): T {
   }) as T;
 }
 
+// ─── Arabic adjustments to a style table ─────────────────────────────────────
+// Every screen builds its StyleSheet through lazyThemed, so the rules that
+// Arabic script needs are applied here, once, instead of at 180 call sites:
+//
+//  · letterSpacing → 0. Tracking pulls joined Arabic letters apart.
+//  · italic → normal. Arabic has no italic; a synthesised slant leans the
+//    wrong way.
+//  · Small text is set a little larger: Arabic letterforms are denser than
+//    Latin ones and 10–12px, which Lato carries well, is hard to read.
+//  · A fixed width on a text style becomes a minimum width, for the same
+//    reason: the Arabic for a short value is often longer.
+//  · lineHeight is raised where it was set tight for Latin, because the
+//    Arabic faces stand taller and carry marks above and below the line.
+//  · On web only, left/right are mirrored (margins, padding, borders, corner
+//    radii, offsets, textAlign). React Native does this itself on native when
+//    the layout is right-to-left; react-native-web does not.
+//
+// A style without these keys is returned untouched, and so is every table
+// when the app is in English. Inline styles are not seen here: write those
+// with marginStart / paddingEnd / start / end so they need no mirroring.
+
+const MIRROR: Record<string, string> = {
+  marginLeft: 'marginRight', marginRight: 'marginLeft',
+  paddingLeft: 'paddingRight', paddingRight: 'paddingLeft',
+  left: 'right', right: 'left',
+  borderLeftWidth: 'borderRightWidth', borderRightWidth: 'borderLeftWidth',
+  borderLeftColor: 'borderRightColor', borderRightColor: 'borderLeftColor',
+  borderTopLeftRadius: 'borderTopRightRadius', borderTopRightRadius: 'borderTopLeftRadius',
+  borderBottomLeftRadius: 'borderBottomRightRadius', borderBottomRightRadius: 'borderBottomLeftRadius',
+};
+
+const ARABIC_MIN_LINE_HEIGHT = 1.6;
+
+// +2 up to 13px, +1 up to 18px, display sizes unchanged.
+export function arabicFontSize(size: number): number {
+  if (size <= 13) return size + 2;
+  if (size <= 18) return size + 1;
+  return size;
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && Object.getPrototypeOf(v) === Object.prototype;
+
+export function localizeStyle<S extends object>(style: S): S {
+  if (!isRTL || !isPlainObject(style)) return style;
+  const src = style as Record<string, unknown>;
+  const mirror = Platform.OS === 'web';
+  let out: Record<string, unknown> | null = null;
+  const set = (k: string, v: unknown) => { (out ??= { ...src })[k] = v; };
+
+  if (typeof src.letterSpacing === 'number' && src.letterSpacing !== 0) set('letterSpacing', 0);
+  if (src.fontStyle === 'italic') set('fontStyle', 'normal');
+  if (typeof src.fontSize === 'number' && typeof src.fontFamily === 'string') {
+    // A text box sized for "47d" or "20%" cannot hold «47 يومًا» at the larger
+    // size: a fixed width becomes a minimum, so the value grows instead of
+    // wrapping onto a second line.
+    if (typeof src.width === 'number' && src.minWidth === undefined) {
+      set('minWidth', src.width);
+      delete out!.width;
+    }
+    const size = arabicFontSize(src.fontSize);
+    if (size !== src.fontSize) set('fontSize', size);
+    if (typeof src.lineHeight === 'number') {
+      const min = Math.round(size * ARABIC_MIN_LINE_HEIGHT);
+      if (src.lineHeight < min) set('lineHeight', min);
+    }
+  }
+  if (mirror) {
+    if (src.textAlign === 'left') set('textAlign', 'right');
+    else if (src.textAlign === 'right') set('textAlign', 'left');
+    for (const key of Object.keys(src)) {
+      const twin = MIRROR[key];
+      if (!twin) continue;
+      // Take both values from the ORIGINAL so a pair swaps cleanly.
+      set(twin, src[key]);
+      if (!(twin in src)) delete out![key];
+    }
+  }
+  return (out ?? src) as S;
+}
+
+function localizeStyles<T extends object>(table: T): T {
+  if (!isRTL || !isPlainObject(table)) return table;
+  let out: Record<string, unknown> | null = null;
+  for (const key of Object.keys(table)) {
+    const style = (table as Record<string, unknown>)[key];
+    if (!isPlainObject(style)) continue;
+    const next = localizeStyle(style);
+    if (next !== style) (out ??= { ...(table as Record<string, unknown>) })[key] = next;
+  }
+  return (out ?? table) as T;
+}
+
 export async function loadThemeMode(): Promise<ThemeMode> {
   try {
     const raw = await AsyncStorage.getItem(MODE_KEY);
@@ -125,7 +220,16 @@ export async function saveThemeMode(mode: ThemeMode): Promise<void> {
   try { await AsyncStorage.setItem(MODE_KEY, mode); } catch {}
 }
 
-export const fonts = {
+// One set of font roles, two scripts. Screens ask for a role (`fonts.latoBold`)
+// and get the face for the app's language, so no screen names a font file.
+//  · Cormorant Garamond ↔ Amiri: the display serif and a classical naskh.
+//  · Lato ↔ IBM Plex Sans Arabic: the text sans. Arabic is hard to read in a
+//    light weight at 11–12px, so each role sits one weight heavier than its
+//    Latin twin.
+// The Arabic faces are loaded by the root layout only when the app is in
+// Arabic. Both include Latin letters and digits, so names and numbers inside
+// Arabic text come from the same face.
+const LATIN_FONTS = {
   cormorant: 'CormorantGaramond_400Regular',
   cormorantMedium: 'CormorantGaramond_500Medium',
   cormorantLight: 'CormorantGaramond_300Light',
@@ -133,4 +237,16 @@ export const fonts = {
   lato: 'Lato_400Regular',
   latoLight: 'Lato_300Light',
   latoBold: 'Lato_700Bold',
-} as const;
+};
+
+const ARABIC_FONTS: typeof LATIN_FONTS = {
+  cormorant: 'Amiri_400Regular',
+  cormorantMedium: 'Amiri_700Bold',
+  cormorantLight: 'Amiri_400Regular',
+  cormorantItalic: 'Amiri_400Regular',
+  lato: 'IBMPlexSansArabic_500Medium',
+  latoLight: 'IBMPlexSansArabic_400Regular',
+  latoBold: 'IBMPlexSansArabic_700Bold',
+};
+
+export const fonts: Readonly<typeof LATIN_FONTS> = isRTL ? ARABIC_FONTS : LATIN_FONTS;

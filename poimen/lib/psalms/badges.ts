@@ -6,6 +6,9 @@
 // the underlying progress it celebrates.
 
 import { PartCard, ReciteCard, Streak, masteredItemsCount } from './store';
+import { S } from '@/lib/i18n';
+
+const T = S.psalms.badges;
 
 export interface Badge {
   id: string;
@@ -33,55 +36,55 @@ export function computeBadges({ selection, cards, recite, streak }: BadgeInputs)
   const badges: Badge[] = [
     {
       id: 'first-fruits',
-      label: 'First Fruits',
-      description: 'Memorize your first passage in full',
+      label: T.firstFruits.label,
+      description: T.firstFruits.description,
       icon: '🌱',
       earned: masteredItems >= 1,
       progress: { current: Math.min(masteredItems, 1), target: 1 },
     },
     {
       id: 'first-recitation',
-      label: 'From the Heart',
-      description: 'Recite a whole passage from memory',
+      label: T.firstRecitation.label,
+      description: T.firstRecitation.description,
       icon: '📖',
       earned: recitedOnce,
     },
     {
       id: 'week',
-      label: 'Faithful Week',
-      description: '7-day streak',
+      label: T.week.label,
+      description: T.week.description,
       icon: '🔥',
       earned: best >= 7,
       progress: { current: Math.min(best, 7), target: 7 },
     },
     {
       id: 'month',
-      label: 'Steadfast Month',
-      description: '30-day streak',
+      label: T.month.label,
+      description: T.month.description,
       icon: '🕯️',
       earned: best >= 30,
       progress: { current: Math.min(best, 30), target: 30 },
     },
     {
       id: 'hundred',
-      label: 'Hundred Days',
-      description: '100-day streak',
+      label: T.hundred.label,
+      description: T.hundred.description,
       icon: '👑',
       earned: best >= 100,
       progress: { current: Math.min(best, 100), target: 100 },
     },
     {
       id: 'five',
-      label: 'Five Treasures',
-      description: 'Memorize 5 passages',
+      label: T.five.label,
+      description: T.five.description,
       icon: '🏆',
       earned: masteredItems >= 5,
       progress: { current: Math.min(masteredItems, 5), target: 5 },
     },
     {
       id: 'twenty',
-      label: 'Twenty Treasures',
-      description: 'Memorize 20 passages',
+      label: T.twenty.label,
+      description: T.twenty.description,
       icon: '✦',
       earned: masteredItems >= 20,
       progress: { current: Math.min(masteredItems, 20), target: 20 },

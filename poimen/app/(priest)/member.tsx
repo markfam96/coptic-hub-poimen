@@ -18,11 +18,43 @@ import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
 import { decryptFromSender } from '@/lib/crypto';
 import { VITAL_CATEGORIES } from '@/lib/canon/history';
-import { RuleConfig, WEEKDAYS, AGPEYA_HOURS, SERVICES } from '@/lib/canon/rule-store';
-import { periodNoun } from '@/lib/canon/periods';
+import { RuleConfig, WEEKDAY_SHORT, AGPEYA_HOURS, SERVICES, freqLabel, fastUntilLabel } from '@/lib/canon/rule-store';
 import { loadMemberRule } from '@/lib/canon/rule-sync';
 import { AssignedCategory, applyOverlay, loadAssignedForPriest } from '@/lib/canon/assigned';
 import { openContactForFoc, openChildrenForFoc } from '@/lib/pastoral-secure';
+import { S, fmt, plural, fmtDate, GLYPH, isRTL } from '@/lib/i18n';
+import { describeAssigned } from '@/lib/canon/describe';
+
+// A stored YYYY-MM-DD shown with Arabic month names; English keeps the stored
+// text exactly as it always showed it.
+const arabicStartDate = (v: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v ?? '');
+  return m ? fmtDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12), { month: 'short', day: 'numeric', year: 'numeric' }) : v;
+};
+
+const T = S.priest.member;
+const R = T.rule;
+const D = S.priest.demo;
+const SHARED = S.priest.shared;
+
+// A canon's frequency, a prayer request's category, a life stage and an
+// encounter type are stored values: these give the words shown for them, and
+// anything else (a frequency typed by hand, say) is shown as stored.
+const frequencyLabel = (v: string) => (S.canonEditor.servant.freq as Record<string, string>)[v] ?? freqLabel(v);
+const prayerCategoryLabel = (v: string) => (T.prayerCategories as Record<string, string>)[v] ?? v;
+const capitalized = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
+const lifeStageLabel = (v: string) => (T.lifeStages as Record<string, string>)[v] ?? capitalized(v);
+const encounterTypeLabel = (v: string) => (T.encounterTypes as Record<string, string>)[v] ?? capitalized(v);
+
+// A phone number, email or street address written in Latin letters keeps its
+// own left-to-right order inside the Arabic layout ("(614) 555-0214" would
+// otherwise read backwards). One written in Arabic is left as it is.
+const ltrRun = (v: string) => (isRTL && !/[\u0600-\u06FF]/.test(v) ? `\u2066${v}\u2069` : v);
+
+const DAY_FORMAT = { month: 'short', day: 'numeric', year: 'numeric' } as const;
+const demoDate = (y: number, m: number, d: number) => fmtDate(new Date(y, m, d), DAY_FORMAT);
+const demoDay = (y: number, m: number, d: number) => demoDate(y, m, d).toUpperCase();
+const demoMonth = (y: number, m: number) => fmtDate(new Date(y, m, 1), { month: 'long', year: 'numeric' });
 
 // Local YYYY-MM-DD of a timestamp — the lock model compares calendar days.
 function localDayOf(iso: string): string {
@@ -31,60 +63,50 @@ function localDayOf(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-const SUMMARY_CATEGORY: Record<string, AssignedCategory> = {
-  'Prostrations': 'prostrations',
-  'Quiet time': 'quiet',
-  'Fasting': 'fasting',
-  'Bible': 'bible',
-  'Spiritual book': 'book',
-  'Confession': 'confession',
-  'Agpeya hours': 'agpeya_hours',
-  'Church services': 'services',
-  'Heart of Service': 'heart_of_service',
-};
-
 // Compact FOC-facing summary of a member's self-set rule. Long option names
 // collapse to their short form ("First Hour (Prime)" → "Prime").
-function ruleSummaryLines(r: RuleConfig): { label: string; value: string }[] {
-  const dayName = (i: number) => WEEKDAYS[i].slice(0, 3);
+function ruleSummaryLines(r: RuleConfig): { category: AssignedCategory; label: string; value: string }[] {
+  const dayName = (i: number) => WEEKDAY_SHORT[i];
   const shortName = (full: string) => {
     const m = full.match(/\(([^)]+)\)/);
     return m ? m[1] : full;
   };
   const hourName = (k: string) => shortName(AGPEYA_HOURS.find(h => h.key === k)?.name ?? k);
   const svcName = (k: string) => (SERVICES.find(s => s.key === k)?.name ?? k).split(' (')[0];
+  const dayLine = (i: number, items: string[]) => fmt(R.dayLine, { day: dayName(i), items: items.join(SHARED.listSeparator) });
+  const servicePer = R.servicePer as Record<string, string>;
 
-  const lines: { label: string; value: string }[] = [
-    { label: 'Prostrations', value: r.prostrations > 0 ? `${r.prostrations} daily` : 'None' },
-    { label: 'Quiet time', value: `${r.quietMinutes} min daily` },
-    { label: 'Fasting', value: `Until ${r.fastUntil} on fasting days` },
-    { label: 'Bible', value: `${r.bible.amount} ${r.bible.mode} daily` },
+  const lines: { category: AssignedCategory; label: string; value: string }[] = [
+    { category: 'prostrations', label: R.prostrations, value: r.prostrations > 0 ? plural(R.prostrationsDaily, r.prostrations) : S.common.none },
+    { category: 'quiet', label: R.quiet, value: plural(R.quietDaily, r.quietMinutes) },
+    { category: 'fasting', label: R.fasting, value: fmt(R.fastUntil, { time: fastUntilLabel(r.fastUntil) }) },
+    { category: 'bible', label: R.bible, value: plural(r.bible.mode === 'minutes' ? R.bibleMinutes : R.bibleChapters, r.bible.amount) },
   ];
-  if (r.book) lines.push({ label: 'Spiritual book', value: `${r.book.title || 'Untitled'} — ${r.book.amount} ${r.book.mode}` });
-  lines.push({ label: 'Confession', value: r.confession });
+  if (r.book) lines.push({ category: 'book', label: R.book, value: plural(r.book.mode === 'minutes' ? R.bookMinutes : R.bookChapters, r.book.amount, { title: r.book.title || R.bookUntitled }) });
+  lines.push({ category: 'confession', label: R.confession, value: freqLabel(r.confession) });
 
   const agpeya = r.days
-    .map((d, i) => (d.hours.length ? `${dayName(i)} · ${d.hours.map(hourName).join(', ')}` : null))
+    .map((d, i) => (d.hours.length ? dayLine(i, d.hours.map(hourName)) : null))
     .filter(Boolean) as string[];
-  if (agpeya.length) lines.push({ label: 'Agpeya hours', value: agpeya.join('\n') });
+  if (agpeya.length) lines.push({ category: 'agpeya_hours', label: R.agpeyaHours, value: agpeya.join('\n') });
 
   // Services are committed either by weekday or by times-per-period, never both.
   if (r.servicesMode === 'counts') {
     const counts = SERVICES
       .filter(sv => (r.serviceCounts?.[sv.key]?.n ?? 0) > 0)
-      .map(sv => `${svcName(sv.key)} · ${r.serviceCounts[sv.key].n}× per ${periodNoun(r.serviceCounts[sv.key].freq)}`);
-    if (counts.length) lines.push({ label: 'Church services', value: counts.join('\n') });
+      .map(sv => fmt(servicePer[r.serviceCounts[sv.key].freq] ?? R.servicePer.Weekly, { service: svcName(sv.key), n: r.serviceCounts[sv.key].n }));
+    if (counts.length) lines.push({ category: 'services', label: R.services, value: counts.join('\n') });
   } else {
     const services = r.days
-      .map((d, i) => (d.services.length ? `${dayName(i)} · ${d.services.map(svcName).join(', ')}` : null))
+      .map((d, i) => (d.services.length ? dayLine(i, d.services.map(svcName)) : null))
       .filter(Boolean) as string[];
-    if (services.length) lines.push({ label: 'Church services', value: services.join('\n') });
+    if (services.length) lines.push({ category: 'services', label: R.services, value: services.join('\n') });
   }
 
   const serving = r.days
-    .map((d, i) => (d.serving.length ? `${dayName(i)} · ${d.serving.map(s => `${s.text} (${s.freq})`).join(', ')}` : null))
+    .map((d, i) => (d.serving.length ? dayLine(i, d.serving.map(s => fmt(R.serving, { text: s.text, freq: freqLabel(s.freq) }))) : null))
     .filter(Boolean) as string[];
-  if (serving.length) lines.push({ label: 'Heart of Service', value: serving.join('\n') });
+  if (serving.length) lines.push({ category: 'heart_of_service', label: R.heartOfService, value: serving.join('\n') });
 
   return lines;
 }
@@ -96,75 +118,75 @@ const DEMO_DB: Record<string, {
   psalm: { streak: number; longestStreak: number; masteredItems: number } | null;
 }> = {
   'demo-mh': {
-    member: { initials: 'MH', name: 'Michael Hanna', stage: 'Growing', joined: 'September 2024', daysSince: 47, flagged: false, flagNote: '' },
+    member: { key: 'mh', initials: D.initials.mh, name: D.names.mh, stage: D.stages.growing, joined: demoMonth(2024, 8), daysSince: 47, flagged: false, flagNote: '' },
     contact: { phone: '(614) 555-0214', email: 'mhanna@example.com', address_line1: '1190 Oak Hill Rd', address_line2: null, city: 'Columbus', state: 'OH', zip: '43235', country: 'US' },
-    life: { life_stage: 'married', spouse_name: 'Nadia Hanna' },
-    children: [{ id: 'dc1', name: 'Kyrillos', birth_year: 2024 }],
+    life: { life_stage: 'married', spouse_name: D.spouses.mh },
+    children: [{ id: 'dc1', name: D.children.mh[0], birth_year: 2024 }],
     vitals: { prayer: 75, quiet: 55, scripture: 50, book: null, liturgy: 80, communion: 65, fasting: 60, service: 25, confession: null },
-    confessions: [{ date: 'APR 20, 2026', type: 'Holy Confession', note: 'Discussed new-father anxieties. Encouraged daily Agpeya.' }, { date: 'FEB 5, 2026', type: 'Holy Confession', note: 'Pre-birth spiritual preparation.' }],
-    prayer: [{ date: 'MAY 4, 2026', topic: 'Gratitude for new baby — prayers of thanksgiving' }, { date: 'MAR 10, 2026', topic: 'Wisdom as a new father' }],
-    canons: [{ id: 'c1', component: 'Morning Agpeya', frequency: 'Daily', startDate: 'Apr 21, 2026', completions: 5, totalDays: 7 }, { id: 'c2', component: 'Psalm reading (1 chapter)', frequency: 'Daily', startDate: 'Apr 21, 2026', completions: 4, totalDays: 7 }],
-    note: 'Growing well since the birth of Kyrillos. Pastoral visit May 4 was fruitful. Follow up on consistent Agpeya practice — suggested praying together as a couple after the baby sleeps.',
+    confessions: [{ date: demoDay(2026, 3, 20), type: T.holyConfession, note: D.confessionNotes.mh[0] }, { date: demoDay(2026, 1, 5), type: T.holyConfession, note: D.confessionNotes.mh[1] }],
+    prayer: [{ date: demoDay(2026, 4, 4), topic: D.prayerTopics.mh[0] }, { date: demoDay(2026, 2, 10), topic: D.prayerTopics.mh[1] }],
+    canons: [{ id: 'c1', component: D.canons.morningAgpeya, frequency: 'Daily', startDate: demoDate(2026, 3, 21), completions: 5, totalDays: 7 }, { id: 'c2', component: D.canons.psalmReading, frequency: 'Daily', startDate: demoDate(2026, 3, 21), completions: 4, totalDays: 7 }],
+    note: D.notes.mh,
     psalm: { streak: 6, longestStreak: 14, masteredItems: 3 },
   },
   'demo-sg': {
-    member: { initials: 'SG', name: 'Sara Girgis', stage: 'Mature', joined: 'March 2021', daysSince: 18, flagged: false, flagNote: '' },
+    member: { key: 'sg', initials: D.initials.sg, name: D.names.sg, stage: D.stages.mature, joined: demoMonth(2021, 2), daysSince: 18, flagged: false, flagNote: '' },
     contact: { phone: '(614) 555-0339', email: 'sgirgis@example.com', address_line1: '408 Granville St', address_line2: null, city: 'Columbus', state: 'OH', zip: '43215', country: 'US' },
     life: { life_stage: 'single', spouse_name: '' },
     children: [],
     vitals: { prayer: 90, quiet: 85, scripture: 85, book: 70, liturgy: 100, communion: 85, fasting: 88, service: 100, confession: null },
-    confessions: [{ date: 'MAY 21, 2026', type: 'Holy Confession', note: 'Discussed vocation discernment. Encouraged continued prayer and patience.' }, { date: 'MAR 3, 2026', type: 'Holy Confession', note: 'Lenten preparation.' }, { date: 'JAN 8, 2026', type: 'Holy Confession', note: 'Start-of-year spiritual plan.' }],
-    prayer: [{ date: 'MAY 20, 2026', topic: 'Discernment of vocation — monastery vs. marriage' }],
-    canons: [{ id: 'c1', component: 'Complete Agpeya (all 7 hours)', frequency: 'Daily', startDate: 'Jan 9, 2026', completions: 6, totalDays: 7 }, { id: 'c2', component: 'Bible reading (2 chapters)', frequency: 'Daily', startDate: 'Jan 9, 2026', completions: 6, totalDays: 7 }],
-    note: 'Spiritually mature and consistent. Currently in a season of vocational discernment. Needs gentle guidance, not pressure. Recommend reading Fr. Matta El-Meskeen on the monastic call.',
+    confessions: [{ date: demoDay(2026, 4, 21), type: T.holyConfession, note: D.confessionNotes.sg[0] }, { date: demoDay(2026, 2, 3), type: T.holyConfession, note: D.confessionNotes.sg[1] }, { date: demoDay(2026, 0, 8), type: T.holyConfession, note: D.confessionNotes.sg[2] }],
+    prayer: [{ date: demoDay(2026, 4, 20), topic: D.prayerTopics.sg[0] }],
+    canons: [{ id: 'c1', component: D.canons.completeAgpeya, frequency: 'Daily', startDate: demoDate(2026, 0, 9), completions: 6, totalDays: 7 }, { id: 'c2', component: D.canons.bibleTwo, frequency: 'Daily', startDate: demoDate(2026, 0, 9), completions: 6, totalDays: 7 }],
+    note: D.notes.sg,
     psalm: { streak: 41, longestStreak: 41, masteredItems: 11 },
   },
   'demo-pb': {
-    member: { initials: 'PB', name: 'Peter Botros', stage: 'New', joined: 'February 2026', daysSince: 74, flagged: true, flagNote: 'Missed two follow-up appointments.' },
+    member: { key: 'pb', initials: D.initials.pb, name: D.names.pb, stage: D.stages.new, joined: demoMonth(2026, 1), daysSince: 74, flagged: true, flagNote: D.flagNotes.pb },
     contact: { phone: '(614) 555-0182', email: 'pbotros@example.com', address_line1: '2847 Riverside Dr', address_line2: null, city: 'Columbus', state: 'OH', zip: '43221', country: 'US' },
-    life: { life_stage: 'married', spouse_name: 'Maria Botros' },
-    children: [{ id: 'dc1', name: 'Anthony', birth_year: 2018 }, { id: 'dc2', name: 'Mary', birth_year: 2021 }],
+    life: { life_stage: 'married', spouse_name: D.spouses.pb },
+    children: [{ id: 'dc1', name: D.children.pb[0], birth_year: 2018 }, { id: 'dc2', name: D.children.pb[1], birth_year: 2021 }],
     vitals: { prayer: 20, quiet: 10, scripture: 30, book: null, liturgy: 45, communion: 30, fasting: 20, service: 0, confession: null },
-    confessions: [{ date: 'FEB 25, 2026', type: 'Holy Confession', note: 'Set spiritual goals.' }, { date: 'FEB 11, 2026', type: 'Introductory Meeting', note: 'Getting to know one another.' }],
-    prayer: [{ date: 'MAY 28, 2026', topic: 'Job transition — feeling lost' }, { date: 'MAY 5, 2026', topic: 'Family reconciliation with brother' }],
-    canons: [{ id: 'c1', component: 'Morning Agpeya', frequency: 'Daily', startDate: 'Mar 1, 2026', completions: 1, totalDays: 7 }, { id: 'c2', component: 'Gospel Reading (1 chapter)', frequency: 'Daily', startDate: 'Mar 1, 2026', completions: 2, totalDays: 7 }],
-    note: 'Needs consistent follow-up. Has expressed interest in deepening faith but struggles with consistency. Suggested accountability partner from the young adult group.',
+    confessions: [{ date: demoDay(2026, 1, 25), type: T.holyConfession, note: D.confessionNotes.pb[0] }, { date: demoDay(2026, 1, 11), type: D.introMeeting, note: D.confessionNotes.pb[1] }],
+    prayer: [{ date: demoDay(2026, 4, 28), topic: D.prayerTopics.pb[0] }, { date: demoDay(2026, 4, 5), topic: D.prayerTopics.pb[1] }],
+    canons: [{ id: 'c1', component: D.canons.morningAgpeya, frequency: 'Daily', startDate: demoDate(2026, 2, 1), completions: 1, totalDays: 7 }, { id: 'c2', component: D.canons.gospelOne, frequency: 'Daily', startDate: demoDate(2026, 2, 1), completions: 2, totalDays: 7 }],
+    note: D.notes.pb,
     psalm: null,
   },
   'demo-mm': {
-    member: { initials: 'MM', name: 'Mary Mikhail', stage: 'Growing', joined: 'June 2023', daysSince: 29, flagged: false, flagNote: '' },
+    member: { key: 'mm', initials: D.initials.mm, name: D.names.mm, stage: D.stages.growing, joined: demoMonth(2023, 5), daysSince: 29, flagged: false, flagNote: '' },
     contact: { phone: '(614) 555-0471', email: 'mmkhail@example.com', address_line1: '93 Olentangy Blvd', address_line2: 'Apt 4B', city: 'Columbus', state: 'OH', zip: '43202', country: 'US' },
-    life: { life_stage: 'married', spouse_name: 'Fady Mikhail' },
-    children: [{ id: 'dc1', name: 'Bishoy', birth_year: 2020 }, { id: 'dc2', name: 'Irene', birth_year: 2023 }],
+    life: { life_stage: 'married', spouse_name: D.spouses.mm },
+    children: [{ id: 'dc1', name: D.children.mm[0], birth_year: 2020 }, { id: 'dc2', name: D.children.mm[1], birth_year: 2023 }],
     vitals: { prayer: 65, quiet: 50, scripture: 60, book: null, liturgy: 75, communion: 60, fasting: 58, service: 50, confession: null },
-    confessions: [{ date: 'MAY 10, 2026', type: 'Holy Confession', note: 'Marriage enrichment focus. Prayed together with Fady.' }, { date: 'FEB 28, 2026', type: 'Holy Confession', note: 'Lenten preparation. Addressed anxiety about second child.' }],
-    prayer: [{ date: 'APR 30, 2026', topic: 'Peace in marriage — communication difficulties' }, { date: 'MAR 15, 2026', topic: 'Healing for mother-in-law' }],
-    canons: [{ id: 'c1', component: 'Evening Prayer (Compline)', frequency: 'Daily', startDate: 'Mar 1, 2026', completions: 5, totalDays: 7 }, { id: 'c2', component: 'Bible reading (1 chapter)', frequency: 'Daily', startDate: 'Mar 1, 2026', completions: 4, totalDays: 7 }],
-    note: 'Consistent growth. Fady and Mary attend together which is encouraging. Consider inviting them to lead a young couples\' small group — they have the maturity for it.',
+    confessions: [{ date: demoDay(2026, 4, 10), type: T.holyConfession, note: D.confessionNotes.mm[0] }, { date: demoDay(2026, 1, 28), type: T.holyConfession, note: D.confessionNotes.mm[1] }],
+    prayer: [{ date: demoDay(2026, 3, 30), topic: D.prayerTopics.mm[0] }, { date: demoDay(2026, 2, 15), topic: D.prayerTopics.mm[1] }],
+    canons: [{ id: 'c1', component: D.canons.eveningPrayer, frequency: 'Daily', startDate: demoDate(2026, 2, 1), completions: 5, totalDays: 7 }, { id: 'c2', component: D.canons.bibleOne, frequency: 'Daily', startDate: demoDate(2026, 2, 1), completions: 4, totalDays: 7 }],
+    note: D.notes.mm,
     psalm: { streak: 2, longestStreak: 9, masteredItems: 1 },
   },
   'demo-ag': {
-    member: { initials: 'AG', name: 'Andrew George', stage: 'Seeking', joined: 'January 2026', daysSince: 92, flagged: true, flagNote: 'New to the church — needs initial meeting.' },
+    member: { key: 'ag', initials: D.initials.ag, name: D.names.ag, stage: D.stages.seeking, joined: demoMonth(2026, 0), daysSince: 92, flagged: true, flagNote: D.flagNotes.ag },
     contact: { phone: '(614) 555-0598', email: 'ageorge@example.com', address_line1: '5120 Kenny Rd', address_line2: null, city: 'Columbus', state: 'OH', zip: '43220', country: 'US' },
     life: { life_stage: 'single', spouse_name: '' },
     children: [],
     vitals: { prayer: null, quiet: null, scripture: null, book: null, liturgy: 25, communion: 10, fasting: null, service: null, confession: null },
     confessions: [],
-    prayer: [{ date: 'MAY 1, 2026', topic: 'Searching for meaning — career feels empty' }],
+    prayer: [{ date: demoDay(2026, 4, 1), topic: D.prayerTopics.ag[0] }],
     canons: [],
-    note: 'Has not had a first confession yet. Moved from Chicago in January. Attends Sunday Liturgy irregularly. Needs a warm personal invitation — try a phone call this week before Sunday.',
+    note: D.notes.ag,
     psalm: null,
   },
   'demo-cn': {
-    member: { initials: 'CN', name: 'Christine Naguib', stage: 'Multiplying', joined: 'April 2019', daysSince: 35, flagged: false, flagNote: '' },
+    member: { key: 'cn', initials: D.initials.cn, name: D.names.cn, stage: D.stages.multiplying, joined: demoMonth(2019, 3), daysSince: 35, flagged: false, flagNote: '' },
     contact: { phone: '(614) 555-0623', email: 'cnaguib@example.com', address_line1: '711 Worthington Ave', address_line2: null, city: 'Columbus', state: 'OH', zip: '43085', country: 'US' },
-    life: { life_stage: 'married', spouse_name: 'Mina Naguib' },
-    children: [{ id: 'dc1', name: 'Verena', birth_year: 2017 }, { id: 'dc2', name: 'Mark', birth_year: 2019 }, { id: 'dc3', name: 'Irini', birth_year: 2022 }],
+    life: { life_stage: 'married', spouse_name: D.spouses.cn },
+    children: [{ id: 'dc1', name: D.children.cn[0], birth_year: 2017 }, { id: 'dc2', name: D.children.cn[1], birth_year: 2019 }, { id: 'dc3', name: D.children.cn[2], birth_year: 2022 }],
     vitals: { prayer: 95, quiet: 90, scripture: 90, book: 85, liturgy: 100, communion: 85, fasting: 92, service: 100, confession: null },
-    confessions: [{ date: 'MAY 5, 2026', type: 'Holy Confession', note: 'Strong spiritually. Discussed leading the women\'s Bible study.' }, { date: 'FEB 20, 2026', type: 'Holy Confession', note: 'Lenten reflection — themes of gratitude and service.' }, { date: 'NOV 10, 2025', type: 'Holy Confession', note: 'Pre-Advent preparation.' }],
-    prayer: [{ date: 'APR 25, 2026', topic: 'Guidance for Verena\'s school transition' }],
-    canons: [{ id: 'c1', component: 'Midnight Praise (Tasbeha)', frequency: 'Weekly', startDate: 'Jan 1, 2026', completions: 6, totalDays: 7 }, { id: 'c2', component: 'Bible reading (3 chapters)', frequency: 'Daily', startDate: 'Jan 1, 2026', completions: 6, totalDays: 7 }],
-    note: 'One of the strongest members of the flock. Mentoring two younger women. Consider formally appointing her to lead the women\'s spiritual development group.',
+    confessions: [{ date: demoDay(2026, 4, 5), type: T.holyConfession, note: D.confessionNotes.cn[0] }, { date: demoDay(2026, 1, 20), type: T.holyConfession, note: D.confessionNotes.cn[1] }, { date: demoDay(2025, 10, 10), type: T.holyConfession, note: D.confessionNotes.cn[2] }],
+    prayer: [{ date: demoDay(2026, 3, 25), topic: D.prayerTopics.cn[0] }],
+    canons: [{ id: 'c1', component: D.canons.midnightPraise, frequency: 'Weekly', startDate: demoDate(2026, 0, 1), completions: 6, totalDays: 7 }, { id: 'c2', component: D.canons.bibleThree, frequency: 'Daily', startDate: demoDate(2026, 0, 1), completions: 6, totalDays: 7 }],
+    note: D.notes.cn,
     psalm: { streak: 87, longestStreak: 112, masteredItems: 22 },
   },
 };
@@ -188,10 +210,10 @@ function vitalsFromPayload(payload: Record<string, number | null> | null | undef
 
 type TabType = 'overview' | 'canon' | 'prayer' | 'notes';
 const TABS: { value: TabType; label: string }[] = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'canon', label: 'Canon' },
-  { value: 'prayer', label: 'Prayer' },
-  { value: 'notes', label: 'Notes' },
+  { value: 'overview', label: T.tabs.overview },
+  { value: 'canon', label: T.tabs.canon },
+  { value: 'prayer', label: T.tabs.prayer },
+  { value: 'notes', label: T.tabs.notes },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -203,7 +225,7 @@ function initials(name: string | null | undefined): string {
 
 function formatLifeStageLine(ls: any, kids: any[]): string | null {
   if (!ls?.life_stage) return null;
-  const stage = ls.life_stage.charAt(0).toUpperCase() + ls.life_stage.slice(1);
+  const stage = lifeStageLabel(ls.life_stage);
   const yr = new Date().getFullYear();
   const parts: string[] = [stage];
   if (kids.length > 0) {
@@ -211,13 +233,12 @@ function formatLifeStageLine(ls: any, kids: any[]): string | null {
     // an unopened row would otherwise read as "~2026" rather than admitting
     // the age is unknown.
     const ages = kids
-      .map((k: any) => (typeof k.birth_year === 'number' ? `~${yr - k.birth_year}` : null))
+      .map((k: any) => (typeof k.birth_year === 'number' ? fmt(T.childAge, { age: yr - k.birth_year }) : null))
       .filter(Boolean)
-      .join(', ');
-    const count = `${kids.length} ${kids.length === 1 ? 'child' : 'children'}`;
-    parts.push(ages ? `${count} (${ages})` : count);
+      .join(SHARED.listSeparator);
+    parts.push(ages ? plural(T.childrenWithAges, kids.length, { ages }) : plural(T.children, kids.length));
   }
-  return parts.join(' · ');
+  return parts.join(SHARED.dot);
 }
 
 export default function MemberScreen() {
@@ -286,9 +307,9 @@ export default function MemberScreen() {
       // Fresh random path per upload (see newFlockPhotoPath); drop the old object.
       const oldPath = myPhotoUrl ? pathFromAvatarUrl(myPhotoUrl) : null;
       const { url, error } = await uploadAvatarImage(newFlockPhotoPath(user.id, memberId), base64);
-      if (!url) { setPhotoError(`Couldn't upload: ${error}`); return; }
+      if (!url) { setPhotoError(fmt(T.errUpload, { error: String(error) })); return; }
       const { error: dbErr } = await db.upsertMemberPhoto(user.id, memberId, url);
-      if (dbErr) { setPhotoError(`Couldn't save: ${dbErr}`); return; }
+      if (dbErr) { setPhotoError(fmt(T.errSave, { error: dbErr })); return; }
       if (oldPath) removeAvatarImage(oldPath);
       setMyPhotoUrl(url);
     } finally {
@@ -298,11 +319,11 @@ export default function MemberScreen() {
 
   function removeMemberPhoto() {
     if (!user || !memberId || !myPhotoUrl) return;
-    confirmDestructive('Remove photo', 'Remove the photo you added for this member?', 'Remove', async () => {
+    confirmDestructive(T.photoRemoveTitle, T.photoRemoveBody, S.common.remove, async () => {
       setPhotoBusy(true);
       const path = pathFromAvatarUrl(myPhotoUrl);
       const { error } = await db.deleteMemberPhoto(user.id, memberId);
-      if (error) { setPhotoError(`Couldn't remove: ${error}`); setPhotoBusy(false); return; }
+      if (error) { setPhotoError(fmt(T.errRemove, { error })); setPhotoBusy(false); return; }
       if (path) removeAvatarImage(path);
       setMyPhotoUrl(null);
       setPhotoBusy(false);
@@ -331,7 +352,7 @@ export default function MemberScreen() {
       if (demoMode) loadEffectiveRule(null);
       if (demoMode) {
         const d = getDemoData(memberId ?? '');
-        setVisitRequested(d.member.name === 'Peter Botros');
+        setVisitRequested(d.member.key === 'pb');
         setMemberAvatarUrl(null);
         setMyPhotoUrl(null);
         setMemberInfo(d.member);
@@ -378,7 +399,7 @@ export default function MemberScreen() {
 
     if (profileData) {
       const p = profileData;
-      const joined = new Date(p.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const joined = fmtDate(new Date(p.created_at), { month: 'long', year: 'numeric' });
       // Latest of the priest's logged confession encounters and the member's
       // own self-reported confession (profiles.last_confession_at) — the same
       // event may exist in both, so taking the newest never double-counts.
@@ -407,11 +428,11 @@ export default function MemberScreen() {
       // Priest-logged confession encounters merged with the member's own
       // self-reported dates (a dates-only mirror — never content). A same-day
       // pair collapses to the logged encounter, which carries the note.
-      const fmtDay = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+      const fmtDay = (ms: number) => fmtDate(new Date(ms), DAY_FORMAT).toUpperCase();
       const encRows = (confData ?? []).map((c: any) => ({
         ms: new Date(c.encountered_at).getTime(),
         day: localDayOf(c.encountered_at),
-        type: 'Holy Confession',
+        type: T.holyConfession,
         note: c.member_note ?? '',
       }));
       const encDays = new Set(encRows.map(r => r.day));
@@ -421,8 +442,8 @@ export default function MemberScreen() {
         .map(d => ({
           ms: new Date(`${d}T12:00:00`).getTime(),
           day: d,
-          type: 'Holy Confession',
-          note: 'Self-reported by the member',
+          type: T.holyConfession,
+          note: T.selfReported,
         }));
       setConfessions(
         [...encRows, ...selfRows]
@@ -434,7 +455,7 @@ export default function MemberScreen() {
     if (prayerData) {
       const senderPubKey = await db.getPublicKey(memberId);
       const decryptedPrayers = await Promise.all(prayerData.map(async p => ({
-        date: new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
+        date: fmtDate(new Date(p.created_at), DAY_FORMAT).toUpperCase(),
         topic: p.category,
         body: (p.body_foc && senderPubKey) ? await decryptFromSender(p.body_foc, senderPubKey) : null,
       })));
@@ -448,7 +469,7 @@ export default function MemberScreen() {
       const enriched = await Promise.all(canonData.map(async (c: any) => {
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
         const count = await db.countCanonCompletionsSince(c.id, sevenDaysAgo);
-        return { id: c.id, component: c.component, frequency: c.frequency, startDate: c.start_date, completions: count, totalDays: 7 };
+        return { id: c.id, component: describeAssigned(c.component, c.category, c.payload), frequency: c.frequency, startDate: isRTL ? arabicStartDate(c.start_date) : c.start_date, completions: count, totalDays: 7 };
       }));
       setCanons(enriched);
     }
@@ -480,7 +501,7 @@ export default function MemberScreen() {
     setAddNoteError('');
     const { data, error } = await db.insertPastoralNote(user!.id, memberId!, newNoteText.trim());
     setAddingNote(false);
-    if (error || !data) { setAddNoteError('Failed to save — please try again.'); return; }
+    if (error || !data) { setAddNoteError(T.noteSaveFailed); return; }
     setNotes(prev => [data, ...prev]);
     setNewNoteText('');
   }
@@ -502,7 +523,7 @@ export default function MemberScreen() {
     setEditError('');
     const { error } = await db.updatePastoralNote(editingId, editText.trim());
     setSavingEdit(false);
-    if (error) { setEditError('Failed to save — please try again.'); return; }
+    if (error) { setEditError(T.noteSaveFailed); return; }
     setNotes(prev => prev.map(n => n.id === editingId ? { ...n, body: editText.trim(), updated_at: new Date().toISOString() } : n));
     setEditingId(null);
   }
@@ -525,7 +546,7 @@ export default function MemberScreen() {
   }
 
   const daysSince = memberInfo?.daysSince;
-  const sinceTxt = daysSince !== null && daysSince !== undefined ? `${daysSince}d` : '—';
+  const sinceTxt = daysSince !== null && daysSince !== undefined ? plural(T.statDays, daysSince) : '—';
   const sinceColor = daysSince === null || daysSince === undefined ? colors.muted : daysSince < 30 ? colors.green : daysSince < 60 ? colors.yellow : colors.red;
   const lifeStageDisplay = formatLifeStageLine(lifeStageData, memberChildren);
 
@@ -536,15 +557,15 @@ export default function MemberScreen() {
     ...encounterNotes.map(n => ({ kind: 'encounter' as const, ms: new Date(n.encountered_at).getTime(), note: n })),
   ].sort((a, b) => b.ms - a.ms);
   const encounterLabel = (n: db.EncounterPrivateNote) =>
-    `${n.encounter_type.charAt(0).toUpperCase()}${n.encounter_type.slice(1)} · ${new Date(n.encountered_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    fmt(T.encounterNoteHeading, { type: encounterTypeLabel(n.encounter_type), date: fmtDate(new Date(n.encountered_at), DAY_FORMAT) });
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
         <TouchableOpacity style={styles.backRow} onPress={() => router.push('/(priest)')}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>My Flock</Text>
+          <Text style={styles.backArrow}>{GLYPH.back}</Text>
+          <Text style={styles.backText}>{SHARED.myFlock}</Text>
         </TouchableOpacity>
 
         {loading ? (
@@ -561,22 +582,22 @@ export default function MemberScreen() {
                 textStyle={styles.heroAvatarText}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.heroName}>{memberInfo?.name ?? memberName ?? 'Member'}</Text>
+                <Text style={styles.heroName}>{memberInfo?.name ?? memberName ?? T.nameFallback}</Text>
                 <Text style={styles.heroMeta}>
-                  {memberInfo?.stage ? `Stage: ${memberInfo.stage} · ` : ''}
-                  {memberInfo?.joined ? `Joined ${memberInfo.joined}` : ''}
+                  {memberInfo?.stage ? fmt(T.heroStage, { stage: memberInfo.stage }) + SHARED.dot : ''}
+                  {memberInfo?.joined ? fmt(T.heroJoined, { date: memberInfo.joined }) : ''}
                 </Text>
                 {lifeStageDisplay ? (
                   <Text style={styles.heroLifeStage}>{lifeStageDisplay}</Text>
                 ) : null}
                 {memberInfo?.flagged && (
                   <View style={styles.flagBadge}>
-                    <Text style={styles.flagBadgeText}>⚑ {memberInfo.flagNote}</Text>
+                    <Text style={styles.flagBadgeText}>{fmt(T.flagNote, { note: memberInfo.flagNote })}</Text>
                   </View>
                 )}
                 {visitRequested && (
                   <View style={styles.visitBadge}>
-                    <Text style={styles.visitBadgeText}>◎ Requested a pastoral visit</Text>
+                    <Text style={styles.visitBadgeText}>{SHARED.visitRequested}</Text>
                   </View>
                 )}
               </View>
@@ -586,20 +607,20 @@ export default function MemberScreen() {
             {!demoMode && !loading && !memberAvatarUrl && (
               <View style={styles.photoRow}>
                 <Text style={styles.photoRowLabel}>
-                  {myPhotoUrl ? 'Your photo of this member (visible only to you)' : 'No profile photo — add one (visible only to you)'}
+                  {myPhotoUrl ? T.photoYours : T.photoNone}
                 </Text>
                 <View style={styles.photoChipRow}>
                   {cameraAvailable && (
                     <TouchableOpacity style={styles.photoChip} onPress={() => addMemberPhoto('camera')} disabled={photoBusy}>
-                      <Text style={styles.photoChipText}>◉ Camera</Text>
+                      <Text style={styles.photoChipText}>{T.photoCamera}</Text>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity style={styles.photoChip} onPress={() => addMemberPhoto('library')} disabled={photoBusy}>
-                    <Text style={styles.photoChipText}>{myPhotoUrl ? '▤ Change' : '▤ Upload'}</Text>
+                    <Text style={styles.photoChipText}>{myPhotoUrl ? T.photoChange : T.photoUpload}</Text>
                   </TouchableOpacity>
                   {!!myPhotoUrl && (
                     <TouchableOpacity style={styles.photoChip} onPress={removeMemberPhoto} disabled={photoBusy}>
-                      <Text style={[styles.photoChipText, { color: colors.red }]}>✕ Remove</Text>
+                      <Text style={[styles.photoChipText, { color: colors.red }]}>{T.photoRemove}</Text>
                     </TouchableOpacity>
                   )}
                   {photoBusy && <ActivityIndicator color={colors.gold} size="small" />}
@@ -612,28 +633,27 @@ export default function MemberScreen() {
             <View style={styles.statStrip}>
               <View style={styles.statItem}>
                 <Text style={[styles.statVal, { color: sinceColor }]}>{sinceTxt}</Text>
-                <Text style={styles.statLabel}>SINCE CONF.</Text>
+                <Text style={styles.statLabel}>{T.statSinceConfession}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
                 <Text style={[styles.statVal, { color: colors.cream }]}>{canonCount}</Text>
-                <Text style={styles.statLabel}>CANONS</Text>
+                <Text style={styles.statLabel}>{T.statCanons}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
                 <Text style={[styles.statVal, { color: colors.cream }]}>{prayerRequests.length}</Text>
-                <Text style={styles.statLabel}>REQUESTS</Text>
+                <Text style={styles.statLabel}>{T.statRequests}</Text>
               </View>
             </View>
 
             {/* ── Last pastoral visit ── */}
             <View style={styles.lastVisitRow}>
-              <Text style={styles.lastVisitLabel}>Last pastoral visit</Text>
+              <Text style={styles.lastVisitLabel}>{T.lastVisit}</Text>
               <Text style={styles.lastVisitVal}>
                 {lastVisit
-                  ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(lastVisit) ? `${lastVisit}T12:00:00` : lastVisit)
-                      .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                  : 'None logged'}
+                  ? fmtDate(new Date(/^\d{4}-\d{2}-\d{2}$/.test(lastVisit) ? `${lastVisit}T12:00:00` : lastVisit), DAY_FORMAT)
+                  : T.lastVisitNone}
               </Text>
             </View>
 
@@ -643,7 +663,7 @@ export default function MemberScreen() {
                 style={[styles.btnGold, { flex: 1 }]}
                 onPress={() => router.push({ pathname: '/(priest)/log-encounter', params: { memberId: memberId ?? '', memberName: memberName ?? memberInfo?.name ?? '' } })}
               >
-                <Text style={styles.btnGoldText}>LOG ENCOUNTER</Text>
+                <Text style={styles.btnGoldText}>{T.logEncounter}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnMenu}
@@ -669,9 +689,9 @@ export default function MemberScreen() {
             {/* ── Overview ── */}
             {tab === 'overview' && (
               <>
-                <Card title="Spiritual Vitals" flat>
+                <Card title={T.vitalsTitle} flat>
                   {vitals.length === 0 ? (
-                    <Text style={styles.emptyText}>Member hasn't shared any vitals yet.</Text>
+                    <Text style={styles.emptyText}>{T.vitalsEmpty}</Text>
                   ) : vitals.map((v, i) => {
                     // Confession has no canon check-off to measure, so it never
                     // has a percentage — show days-since-confession instead of
@@ -685,46 +705,46 @@ export default function MemberScreen() {
                     return (
                       <View key={i} style={[styles.vitalRow, i < vitals.length - 1 && { marginBottom: 10 }]}>
                         <Text style={[styles.vitalLabel, notShared && styles.vitalLabelDim]}>
-                          {v.label}{notShared ? ' (not shared)' : ''}
+                          {notShared ? fmt(T.vitalNotShared, { label: v.label }) : v.label}
                         </Text>
                         <View style={styles.vitalTrack}>
                           {has && !isConf && <View style={[styles.vitalFill, { width: `${v.pct}%` as any }]} />}
                         </View>
                         <Text style={[styles.vitalVal, !has && { color: colors.muted, opacity: 0.4 }]}>
-                          {isConf ? (has ? `${confDays}d` : '—') : (has ? `${v.pct}%` : '—')}
+                          {isConf ? (has ? fmt(T.vitalDays, { n: confDays }) : '—') : (has ? `${v.pct}%` : '—')}
                         </Text>
                       </View>
                     );
                   })}
                 </Card>
 
-                <Card title="Psalm Memorization" titleIconNode={<Harp size={16} color={colors.gold} />} flat>
+                <Card title={T.psalmTitle} titleIconNode={<Harp size={16} color={colors.gold} />} flat>
                   {!psalmStats ? (
-                    <Text style={styles.emptyText}>Member hasn't shared psalm memorization progress yet.</Text>
+                    <Text style={styles.emptyText}>{T.psalmEmpty}</Text>
                   ) : (
                     <View style={styles.psalmStatsRow}>
                       <View style={styles.psalmStat}>
                         <Text style={styles.psalmStatValue}>🔥 {psalmStats.streak}</Text>
-                        <Text style={styles.psalmStatLabel}>day streak</Text>
+                        <Text style={styles.psalmStatLabel}>{T.psalmStreak}</Text>
                       </View>
                       <View style={styles.psalmStat}>
                         <Text style={styles.psalmStatValue}>{psalmStats.longestStreak}</Text>
-                        <Text style={styles.psalmStatLabel}>best streak</Text>
+                        <Text style={styles.psalmStatLabel}>{T.psalmBest}</Text>
                       </View>
                       <View style={styles.psalmStat}>
                         <Text style={styles.psalmStatValue}>{psalmStats.masteredItems}</Text>
-                        <Text style={styles.psalmStatLabel}>memorized</Text>
+                        <Text style={styles.psalmStatLabel}>{T.psalmMemorized}</Text>
                       </View>
                     </View>
                   )}
                 </Card>
 
-                <Card title="Confession History" flat>
+                <Card title={T.confessionTitle} flat>
                   <View style={styles.privacyNote}>
-                    <Text style={styles.privacyNoteText}>✦ Dates and type only. Content is never stored.</Text>
+                    <Text style={styles.privacyNoteText}>{T.confessionPrivacy}</Text>
                   </View>
                   {confessions.length === 0 ? (
-                    <Text style={styles.emptyText}>No confession history recorded yet.</Text>
+                    <Text style={styles.emptyText}>{T.confessionEmpty}</Text>
                   ) : confessions.map((c, i) => (
                     <View key={i} style={[styles.histRow, i < confessions.length - 1 && styles.histBorder]}>
                       <Text style={styles.histDate}>{c.date}</Text>
@@ -738,17 +758,17 @@ export default function MemberScreen() {
 
             {/* ── Canon ── */}
             {tab === 'canon' && (
-              <Card title="Current Canon" flat>
+              <Card title={T.currentCanonTitle} flat>
                 {!memberRule ? (
-                  <Text style={styles.emptyText}>No personal rule synced yet.</Text>
+                  <Text style={styles.emptyText}>{T.currentCanonEmpty}</Text>
                 ) : (
                   ruleSummaryLines(memberRule).map((l, i, arr) => (
-                    <View key={l.label} style={[styles.canonRow, i < arr.length - 1 && styles.histBorder]}>
+                    <View key={l.category} style={[styles.canonRow, i < arr.length - 1 && styles.histBorder]}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.canonComponent}>
                           {l.label}
-                          {SUMMARY_CATEGORY[l.label] && assignedCats.has(SUMMARY_CATEGORY[l.label])
-                            ? <Text style={styles.assignedByYou}>  ·  assigned by you</Text>
+                          {assignedCats.has(l.category)
+                            ? <Text style={styles.assignedByYou}>{T.assignedByYou}</Text>
                             : null}
                         </Text>
                         <Text style={styles.canonMeta}>{l.value}</Text>
@@ -757,25 +777,25 @@ export default function MemberScreen() {
                   ))
                 )}
                 <Text style={styles.currentCanonHint}>
-                  The member's own rule. Open the editor below to adjust it — categories you assign become read-only for the member until their next confession.
+                  {T.currentCanonHint}
                 </Text>
               </Card>
             )}
             {tab === 'canon' && (
-              <Card title="Assigned Canon" flat>
+              <Card title={T.assignedCanonTitle} flat>
                 {canons.length === 0 ? (
-                  <Text style={styles.emptyText}>No canon assigned yet.</Text>
+                  <Text style={styles.emptyText}>{T.assignedCanonEmpty}</Text>
                 ) : canons.map((c, i) => {
                   const pct = Math.round((c.completions / c.totalDays) * 100);
                   return (
                     <View key={c.id} style={[styles.canonRow, i < canons.length - 1 && styles.histBorder]}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.canonComponent}>{c.component}</Text>
-                        <Text style={styles.canonMeta}>{c.frequency} · since {c.startDate}</Text>
+                        <Text style={styles.canonMeta}>{fmt(T.canonSince, { frequency: frequencyLabel(c.frequency), date: c.startDate })}</Text>
                       </View>
                       <View style={styles.canonPill}>
                         <Text style={[styles.canonPillText, { color: pct < 40 ? colors.red : colors.yellow }]}>
-                          {c.completions}/{c.totalDays} this week
+                          {fmt(T.canonThisWeek, { done: c.completions, total: c.totalDays })}
                         </Text>
                       </View>
                     </View>
@@ -785,23 +805,23 @@ export default function MemberScreen() {
                   style={[styles.btnGold, { alignSelf: 'flex-start', marginTop: 12 }]}
                   onPress={() => router.push({ pathname: '/(priest)/assign-canon', params: { memberId: memberId ?? '', memberName: memberName ?? memberInfo?.name ?? '' } })}
                 >
-                  <Text style={styles.btnGoldText}>ASSIGN CANON</Text>
+                  <Text style={styles.btnGoldText}>{T.assignCanon}</Text>
                 </TouchableOpacity>
               </Card>
             )}
 
             {/* ── Prayer ── */}
             {tab === 'prayer' && (
-              <Card title="Prayer Requests" flat>
+              <Card title={T.prayerTitle} flat>
                 <View style={styles.privacyNote}>
-                  <Text style={styles.privacyNoteText}>✦ Requests shared with FOC only, or with both FOC and Sunday school servant.</Text>
+                  <Text style={styles.privacyNoteText}>{T.prayerPrivacy}</Text>
                 </View>
                 {prayerRequests.length === 0 ? (
-                  <Text style={styles.emptyText}>No requests shared with Father of Confession.</Text>
+                  <Text style={styles.emptyText}>{T.prayerEmpty}</Text>
                 ) : prayerRequests.map((p, i) => (
                   <View key={i} style={[styles.histRow, i < prayerRequests.length - 1 && styles.histBorder]}>
                     <Text style={styles.histDate}>{p.date}</Text>
-                    <Text style={styles.histType}>{p.topic}</Text>
+                    <Text style={styles.histType}>{prayerCategoryLabel(p.topic)}</Text>
                     {p.body ? <Text style={styles.histNote}>{p.body}</Text> : null}
                   </View>
                 ))}
@@ -810,13 +830,13 @@ export default function MemberScreen() {
 
             {/* ── Notes ── */}
             {tab === 'notes' && (
-              <Card title="Pastoral Notes (Private)" flat>
+              <Card title={T.notesTitle} flat>
                 <View style={styles.privacyNote}>
-                  <Text style={styles.privacyNoteText}>✦ Your private notes. Never visible to the member.</Text>
+                  <Text style={styles.privacyNoteText}>{T.notesPrivacy}</Text>
                 </View>
 
                 {noteItems.length === 0 && (
-                  <Text style={styles.emptyText}>No notes yet. Add your first note below.</Text>
+                  <Text style={styles.emptyText}>{T.notesEmpty}</Text>
                 )}
 
                 {noteItems.map(item => {
@@ -835,13 +855,14 @@ export default function MemberScreen() {
                   <View key={note.id} style={styles.noteCard}>
                     <View style={styles.noteCardHeader}>
                       <Text style={styles.noteCardDate}>
-                        {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {note.updated_at !== note.created_at ? '  (edited)' : ''}
+                        {note.updated_at !== note.created_at
+                          ? fmt(T.noteEdited, { date: fmtDate(new Date(note.created_at), DAY_FORMAT) })
+                          : fmtDate(new Date(note.created_at), DAY_FORMAT)}
                       </Text>
                       {editingId !== note.id && (
                         <View style={styles.noteActions}>
                           <TouchableOpacity onPress={() => handleStartEdit(note)} style={styles.noteActionBtn}>
-                            <Text style={styles.noteActionText}>Edit</Text>
+                            <Text style={styles.noteActionText}>{S.common.edit}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => handleDeleteNote(note.id)}
@@ -849,7 +870,7 @@ export default function MemberScreen() {
                             disabled={deletingId === note.id}
                           >
                             <Text style={[styles.noteActionText, { color: colors.red }]}>
-                              {deletingId === note.id ? '…' : 'Delete'}
+                              {deletingId === note.id ? '…' : S.common.delete}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -873,10 +894,10 @@ export default function MemberScreen() {
                             onPress={handleSaveEdit}
                             disabled={!editText.trim() || savingEdit}
                           >
-                            <Text style={styles.btnGoldText}>{savingEdit ? 'SAVING…' : 'SAVE'}</Text>
+                            <Text style={styles.btnGoldText}>{savingEdit ? T.noteSaving : T.noteSave}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.btnCancel} onPress={() => setEditingId(null)}>
-                            <Text style={styles.btnCancelText}>CANCEL</Text>
+                            <Text style={styles.btnCancelText}>{T.noteCancel}</Text>
                           </TouchableOpacity>
                         </View>
                       </>
@@ -890,7 +911,7 @@ export default function MemberScreen() {
                 <View style={styles.addNoteSection}>
                   <TextInput
                     style={styles.noteInput}
-                    placeholder="Add a pastoral note…"
+                    placeholder={T.notePlaceholder}
                     placeholderTextColor={colors.faint}
                     multiline
                     numberOfLines={4}
@@ -903,7 +924,7 @@ export default function MemberScreen() {
                     onPress={handleAddNote}
                     disabled={!newNoteText.trim() || addingNote}
                   >
-                    <Text style={styles.btnGoldText}>{addingNote ? 'SAVING…' : 'ADD NOTE'}</Text>
+                    <Text style={styles.btnGoldText}>{addingNote ? T.noteSaving : T.noteAdd}</Text>
                   </TouchableOpacity>
                 </View>
               </Card>
@@ -927,7 +948,7 @@ export default function MemberScreen() {
         >
           <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{memberInfo?.name ?? 'Contact'}</Text>
+            <Text style={styles.sheetTitle}>{memberInfo?.name ?? T.contactFallback}</Text>
 
             {/* Assign canon action */}
             <TouchableOpacity
@@ -936,10 +957,10 @@ export default function MemberScreen() {
             >
               <View style={styles.sheetRowIcon}><CandleIcon size={18} color={colors.gold} /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sheetRowLabel}>Assign Canon</Text>
-                <Text style={styles.sheetRowValue}>Add a spiritual practice</Text>
+                <Text style={styles.sheetRowLabel}>{T.sheet.assignCanon}</Text>
+                <Text style={styles.sheetRowValue}>{T.sheet.assignCanonSub}</Text>
               </View>
-              <Text style={styles.sheetRowAction}>ASSIGN</Text>
+              <Text style={styles.sheetRowAction}>{T.sheet.assignAction}</Text>
             </TouchableOpacity>
 
             {contact?.phone ? (
@@ -949,10 +970,10 @@ export default function MemberScreen() {
               >
                 <Text style={styles.sheetRowIcon}>☎</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sheetRowLabel}>Phone</Text>
-                  <Text style={styles.sheetRowValue}>{contact.phone}</Text>
+                  <Text style={styles.sheetRowLabel}>{T.sheet.phone}</Text>
+                  <Text style={styles.sheetRowValue}>{ltrRun(contact.phone)}</Text>
                 </View>
-                <Text style={styles.sheetRowAction}>CALL</Text>
+                <Text style={styles.sheetRowAction}>{T.sheet.phoneAction}</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -963,10 +984,10 @@ export default function MemberScreen() {
               >
                 <Text style={styles.sheetRowIcon}>✉</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sheetRowLabel}>Email</Text>
-                  <Text style={styles.sheetRowValue}>{contact.email}</Text>
+                  <Text style={styles.sheetRowLabel}>{T.sheet.email}</Text>
+                  <Text style={styles.sheetRowValue}>{ltrRun(contact.email)}</Text>
                 </View>
-                <Text style={styles.sheetRowAction}>EMAIL</Text>
+                <Text style={styles.sheetRowAction}>{T.sheet.emailAction}</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -974,30 +995,30 @@ export default function MemberScreen() {
               <TouchableOpacity style={styles.sheetRow} onPress={openMaps}>
                 <Text style={styles.sheetRowIcon}>⌖</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sheetRowLabel}>Address</Text>
-                  <Text style={styles.sheetRowValue}>{contact.address_line1}</Text>
+                  <Text style={styles.sheetRowLabel}>{T.sheet.address}</Text>
+                  <Text style={styles.sheetRowValue}>{ltrRun(contact.address_line1)}</Text>
                   {contact.address_line2 ? (
-                    <Text style={styles.sheetRowValue}>{contact.address_line2}</Text>
+                    <Text style={styles.sheetRowValue}>{ltrRun(contact.address_line2)}</Text>
                   ) : null}
                   <Text style={styles.sheetRowValue}>
-                    {[contact.city, contact.state, contact.zip].filter(Boolean).join(', ')}
+                    {ltrRun([contact.city, contact.state, contact.zip].filter(Boolean).join(', '))}
                   </Text>
                   {contact.country ? (
                     <Text style={styles.sheetRowValue}>{contact.country}</Text>
                   ) : null}
                 </View>
-                <Text style={styles.sheetRowAction}>MAP</Text>
+                <Text style={styles.sheetRowAction}>{T.sheet.addressAction}</Text>
               </TouchableOpacity>
             ) : null}
 
             {!contact?.phone && !contact?.email && !contact?.address_line1 ? (
               <Text style={styles.sheetEmpty}>
-                No contact info on file yet.{'\n'}Member can add this in their Profile settings.
+                {T.sheet.empty}
               </Text>
             ) : null}
 
             <TouchableOpacity style={styles.sheetCloseBtn} onPress={() => setShowContactSheet(false)}>
-              <Text style={styles.sheetCloseBtnText}>CLOSE</Text>
+              <Text style={styles.sheetCloseBtnText}>{T.sheet.close}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

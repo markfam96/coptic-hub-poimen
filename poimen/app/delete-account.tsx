@@ -10,6 +10,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/lib/auth';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { S, fmt, GLYPH } from '@/lib/i18n';
+
+const T = S.account.deleteAccount;
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
@@ -19,7 +22,10 @@ export default function DeleteAccountScreen() {
   const [error, setError] = useState('');
 
   const isShepherd = profile?.role === 'priest' || profile?.role === 'servant' || profile?.role === 'admin';
-  const ready = typed.trim().toUpperCase() === 'DELETE';
+  // The word to type is shown in the app's language; the English one is
+  // accepted in every language.
+  const typedWord = typed.trim().toUpperCase();
+  const ready = typedWord === 'DELETE' || typedWord === T.confirmWord.toUpperCase();
 
   async function handleDelete() {
     if (!ready || working) return;
@@ -39,43 +45,37 @@ export default function DeleteAccountScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <TouchableOpacity style={styles.backRow} onPress={() => router.back()} disabled={working}>
-            <Text style={styles.backArrow}>‹</Text>
-            <Text style={styles.backText}>Profile</Text>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{S.account.backToProfile}</Text>
           </TouchableOpacity>
 
-          <Text style={styles.pageTitle}>Delete my account</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
           <Text style={styles.body}>
-            This permanently deletes your account. It happens immediately and cannot be undone.
+            {T.intro}
           </Text>
 
-          <Text style={styles.heading}>What is deleted</Text>
+          <Text style={styles.heading}>{T.deletedHeading}</Text>
           <Text style={styles.body}>
-            Your profile and photo, your spiritual journal and blessings, prayer requests, your canon
-            and its history, spiritual vitals, psalm progress, confession dates, appointments, contact
-            and family details, and your encryption key backup. Your confession notes on this phone
-            are erased too.
+            {T.deletedBody}
           </Text>
 
-          <Text style={styles.heading}>What is kept</Text>
+          <Text style={styles.heading}>{T.keptHeading}</Text>
           <Text style={styles.body}>
-            Your Father of Confession keeps his own records of your encounters and his notes about you,
-            no longer linked to any account.
+            {T.keptBody}
           </Text>
           {isShepherd && (
             <Text style={styles.body}>
-              As a {profile?.role === 'servant' ? 'servant' : 'priest'}, your private notes are deleted
-              and the members linked to you are unlinked. Encounters you logged stay in each member's
-              Pastoral Journey, without your name, and any canon you assigned becomes part of their own rule.
+              {profile?.role === 'servant' ? T.shepherdServant : T.shepherdPriest}
             </Text>
           )}
 
-          <Text style={styles.heading}>Confirm</Text>
-          <Text style={styles.body}>Type DELETE to confirm.</Text>
+          <Text style={styles.heading}>{T.confirmHeading}</Text>
+          <Text style={styles.body}>{fmt(T.typeToConfirm, { word: T.confirmWord })}</Text>
           <TextInput
             style={styles.input}
             value={typed}
             onChangeText={t => { setTyped(t); setError(''); }}
-            placeholder="DELETE"
+            placeholder={T.confirmWord}
             placeholderTextColor={colors.faint}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -89,7 +89,7 @@ export default function DeleteAccountScreen() {
           >
             {working
               ? <ActivityIndicator color={colors.cream} />
-              : <Text style={styles.deleteText}>DELETE MY ACCOUNT</Text>}
+              : <Text style={styles.deleteText}>{T.submit}</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

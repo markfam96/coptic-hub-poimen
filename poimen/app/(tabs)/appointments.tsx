@@ -22,16 +22,37 @@ import {
   generateOpenSlots, groupSlotsByDay, groupDaysByMonth, formatTime, formatDayLabel,
   SCHEDULE_HORIZON_DAYS,
   type OpenSlot, type AvailabilityRule, type DateException,
+  typeLabelMatches,
 } from '@/lib/scheduling/slots';
 import { normalizeCalendlyUrl, loadDemoCalendly, loadDemoSchedulingMode } from '@/lib/scheduling/calendly';
 import type { SchedulingMode } from '@/lib/db';
+import { S, fmt, plural, GLYPH, lang } from '@/lib/i18n';
+
+const T = S.appointments;
 
 const STATUS_STYLE: Record<Appointment['status'], { label: string; color: string }> = {
-  requested: { label: 'Pending confirmation', color: colors.gold },
-  confirmed: { label: 'Confirmed', color: colors.green },
-  declined:  { label: 'Declined', color: colors.red },
-  cancelled: { label: 'Cancelled', color: colors.muted },
+  requested: { label: T.status.requested, color: colors.gold },
+  confirmed: { label: T.status.confirmed, color: colors.green },
+  declined:  { label: T.status.declined, color: colors.red },
+  cancelled: { label: T.status.cancelled, color: colors.muted },
 };
+
+// The server words a refused request in English
+// (supabase/migrations/20260723_scheduling.sql). English shows that message as
+// it arrives; another language shows its own sentence for the ones recognised
+// here and leaves anything else as it came.
+const SERVER_ERRORS: [RegExp, keyof typeof T.errors][] = [
+  [/linked to a Father of Confession/i, 'notLinked'],
+  [/appointment type is unavailable/i, 'typeUnavailable'],
+  [/scheduling is currently closed/i, 'closed'],
+  [/time in the future/i, 'pastTime'],
+  [/time was just taken/i, 'taken'],
+];
+function localizeRequestError(message: string): string {
+  if (lang === 'en') return message;
+  const hit = SERVER_ERRORS.find(([re]) => re.test(message));
+  return hit ? T.errors[hit[1]] : message;
+}
 
 export default function AppointmentsScreen() {
   const navigation = useNavigation();
@@ -46,7 +67,7 @@ export default function AppointmentsScreen() {
   // once the priest's types are actually in hand, which is what ?focus needs.
   const [ready, setReady] = useState(false);
   const [focId, setFocId] = useState<string | null>(demoMode ? 'demo-foc' : null);
-  const [focName, setFocName] = useState<string>('your Father of Confession');
+  const [focName, setFocName] = useState<string>(S.common.yourFatherOfConfession);
   // How this FOC takes bookings: the app's own slots, or his Calendly page.
   // Exactly one — the tab shows a single booking path, never two.
   const [focMode, setFocMode] = useState<SchedulingMode>('app');
@@ -70,10 +91,10 @@ export default function AppointmentsScreen() {
     if (demoMode) {
       const now = new Date();
       const soon = new Date(now); soon.setDate(now.getDate() + 2); soon.setHours(15, 0, 0, 0);
-      setFocId('demo-foc'); setFocName('Fr. Bishoy'); setConsented(true); setOpen(true);
+      setFocId('demo-foc'); setFocName(T.demo.focName); setConsented(true); setOpen(true);
       setTypes([
-        { id: 'dt-conf', priest_id: 'demo', label: 'Holy Confession', duration_minutes: 30, active: true, sort: 0, created_at: '' },
-        { id: 'dt-visit', priest_id: 'demo', label: 'Home Visitation', duration_minutes: 60, active: true, sort: 1, created_at: '' },
+        { id: 'dt-conf', priest_id: 'demo', label: T.demo.typeConfession, duration_minutes: 30, active: true, sort: 0, created_at: '' },
+        { id: 'dt-visit', priest_id: 'demo', label: T.demo.typeVisit, duration_minutes: 60, active: true, sort: 1, created_at: '' },
       ]);
       setRules([
         { id: 'dr-1', priest_id: 'demo', type_id: 'dt-conf', weekday: 0, start_minute: 840, end_minute: 960, active: true, created_at: '' },
@@ -94,7 +115,7 @@ export default function AppointmentsScreen() {
         { on_date: key(sundayAfter), start_minute: 840, end_minute: 900 },
       ]);
       setMine([
-        { id: 'ma-1', priest_id: 'demo', congregant_id: 'me', type_id: 'dt-conf', type_label: 'Holy Confession', starts_at: soon.toISOString(), duration_minutes: 30, status: 'confirmed', note: null, created_at: '', updated_at: '' },
+        { id: 'ma-1', priest_id: 'demo', congregant_id: 'me', type_id: 'dt-conf', type_label: T.demo.typeConfession, starts_at: soon.toISOString(), duration_minutes: 30, status: 'confirmed', note: null, created_at: '', updated_at: '' },
       ]);
       // Whatever the demo priest saved on his Schedule screen — same device.
       setFocCalendly(normalizeCalendlyUrl((await loadDemoCalendly()) ?? ''));
@@ -121,7 +142,7 @@ export default function AppointmentsScreen() {
       db.getSchedulingMode(foc),
     ]);
     setOpen(o); setTypes(t); setRules(r); setBusy(b); setMine(m); setExceptions(ex);
-    setFocName(fp?.full_name ? clergyDisplayName(fp.full_name) : 'your Father of Confession');
+    setFocName(fp?.full_name ? clergyDisplayName(fp.full_name) : S.common.yourFatherOfConfession);
     // Re-checked on read: whatever is in the column, only a real Calendly
     // address becomes a button.
     setFocCalendly(normalizeCalendlyUrl(cal ?? ''));
@@ -141,8 +162,7 @@ export default function AppointmentsScreen() {
   // navigated away while this screen was still loading.
   useEffect(() => {
     if (!ready || !focus) return;
-    const needle = String(focus).toLowerCase();
-    const match = types.find(t => t.active && t.label.toLowerCase().includes(needle));
+    const match = types.find(t => t.active && typeLabelMatches(t.label, String(focus)));
     if (match) setTypeFilter(match.id);
     navigation.setParams({ focus: '' } as never);
   }, [ready, focus, types]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -201,13 +221,13 @@ export default function AppointmentsScreen() {
     }
     const { error } = await db.requestAppointment(pending.typeId, pending.start.toISOString(), note.trim() || undefined);
     setSubmitting(false);
-    if (error) { setReqErr(error); return; }
+    if (error) { setReqErr(localizeRequestError(error)); return; }
     setPending(null); setNote('');
     await load();
   }
 
   function cancelMine(a: Appointment) {
-    confirmDestructive('Cancel', `Cancel your ${a.type_label} on ${formatDayLabel(new Date(a.starts_at))}?`, 'Cancel it', async () => {
+    confirmDestructive(T.mine.cancelConfirmTitle, fmt(T.mine.cancelConfirmBody, { type: a.type_label, date: formatDayLabel(new Date(a.starts_at)) }), T.mine.cancelConfirmAction, async () => {
       setMine(p => p.map(x => x.id === a.id ? { ...x, status: 'cancelled' } : x));
       // Give the time back to the open list — otherwise the slot they just
       // freed stays hidden until the app restarts, and they can't rebook it.
@@ -230,23 +250,23 @@ export default function AppointmentsScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.detailHeader}>
           <TouchableOpacity onPress={() => { setPending(null); setNote(''); setReqErr(''); }} hitSlop={10}>
-            <Text style={styles.back}>‹ Back</Text>
+            <Text style={styles.back}>{GLYPH.back} {S.common.back}</Text>
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-          <Text style={styles.pageTitle}>Request appointment</Text>
+          <Text style={styles.pageTitle}>{T.request.title}</Text>
           <Card flat>
             <Text style={styles.confirmType}>{pending.typeLabel}</Text>
-            <Text style={styles.confirmWhen}>{formatDayLabel(pending.start)} · {formatTime(pending.start)}</Text>
-            <Text style={styles.confirmDur}>{pending.duration} minutes · with {focName}</Text>
+            <Text style={styles.confirmWhen}>{fmt(T.dateTime, { date: formatDayLabel(pending.start), time: formatTime(pending.start) })}</Text>
+            <Text style={styles.confirmDur}>{plural(T.request.duration, pending.duration, { name: focName })}</Text>
           </Card>
-          <Text style={[styles.formLabel, { marginTop: 16 }]}>NOTE (OPTIONAL)</Text>
-          <TextInput style={styles.textarea} multiline placeholder="Anything you'd like your father to know ahead of time." placeholderTextColor={colors.faint} value={note} onChangeText={setNote} />
+          <Text style={[styles.formLabel, { marginTop: 16 }]}>{T.request.noteLabel}</Text>
+          <TextInput style={styles.textarea} multiline placeholder={T.request.notePlaceholder} placeholderTextColor={colors.faint} value={note} onChangeText={setNote} />
           {reqErr ? <Text style={styles.errText}>{reqErr}</Text> : null}
           <TouchableOpacity style={[styles.addBtn, submitting && styles.btnDisabled]} onPress={submitRequest} disabled={submitting}>
-            {submitting ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.addBtnText}>SEND REQUEST</Text>}
+            {submitting ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.addBtnText}>{T.request.send}</Text>}
           </TouchableOpacity>
-          <Text style={styles.hint}>{focName} will confirm or decline your request.</Text>
+          <Text style={styles.hint}>{fmt(T.request.hint, { name: focName })}</Text>
         </ScrollView>
       </SafeAreaView>
     );
@@ -256,26 +276,26 @@ export default function AppointmentsScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.topbar}>
-          <TouchableOpacity style={[styles.chipBtn, { marginRight: 12 }]} hitSlop={8}
+          <TouchableOpacity style={[styles.chipBtn, styles.chipBtnGap]} hitSlop={8}
             onPress={() => { H.tap(); navigation.dispatch(DrawerActions.openDrawer()); }}>
             <Text style={styles.chipBtnText}>☰</Text>
           </TouchableOpacity>
-          <Text style={styles.pageTitle}>Appointments</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
 
         {/* My appointments */}
         {myUpcoming.length > 0 && (
-          <Card title="My Appointments" flat>
+          <Card title={T.mine.title} flat>
             {myUpcoming.map(a => {
               const st = STATUS_STYLE[a.status];
               return (
                 <View key={a.id} style={styles.mineRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{a.type_label}</Text>
-                    <Text style={styles.rowSub}>{formatDayLabel(new Date(a.starts_at))} · {formatTime(new Date(a.starts_at))}</Text>
+                    <Text style={styles.rowSub}>{fmt(T.dateTime, { date: formatDayLabel(new Date(a.starts_at)), time: formatTime(new Date(a.starts_at)) })}</Text>
                     <Text style={[styles.statusPill, { color: st.color }]}>{st.label}</Text>
                   </View>
-                  <TouchableOpacity hitSlop={8} onPress={() => cancelMine(a)}><Text style={styles.cancelLink}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity hitSlop={8} onPress={() => cancelMine(a)}><Text style={styles.cancelLink}>{T.mine.cancel}</Text></TouchableOpacity>
                 </View>
               );
             })}
@@ -287,30 +307,30 @@ export default function AppointmentsScreen() {
             book the same hour twice. Booking on Calendly is external, so it
             doesn't wait on data-sharing consent. */}
         {!focId ? (
-          <Card flat><Text style={styles.empty}>Link a Father of Confession from your home screen to request appointments.</Text></Card>
+          <Card flat><Text style={styles.empty}>{T.empty.noFoc}</Text></Card>
         ) : focMode === 'calendly' ? (
           focCalendly ? (
             <TouchableOpacity style={styles.calendlyCard} onPress={() => { H.tap(); Linking.openURL(focCalendly); }} activeOpacity={0.85}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.calendlyTitle}>Book on Calendly</Text>
-                <Text style={styles.calendlySub}>{focName} schedules appointments through Calendly — opens in your browser.</Text>
+                <Text style={styles.calendlyTitle}>{T.calendly.title}</Text>
+                <Text style={styles.calendlySub}>{fmt(T.calendly.sub, { name: focName })}</Text>
               </View>
               <Text style={styles.calendlyArrow}>↗</Text>
             </TouchableOpacity>
           ) : (
-            <Card flat><Text style={styles.empty}>{focName} takes bookings outside the app right now — reach out directly to schedule.</Text></Card>
+            <Card flat><Text style={styles.empty}>{fmt(T.empty.calendlyNoLink, { name: focName })}</Text></Card>
           )
         ) : !consented ? (
-          <Card flat><Text style={styles.empty}>Confirm sharing with {focName} to request appointments.</Text></Card>
+          <Card flat><Text style={styles.empty}>{fmt(T.empty.notConsented, { name: focName })}</Text></Card>
         ) : !open ? (
-          <Card flat><Text style={styles.empty}>{focName} isn't accepting appointment requests right now. Check back later.</Text></Card>
+          <Card flat><Text style={styles.empty}>{fmt(T.empty.closed, { name: focName })}</Text></Card>
         ) : (
           <>
             {/* type filter */}
             {types.filter(t => t.active).length > 1 && (
               <View style={styles.filterRow}>
                 <TouchableOpacity style={[styles.pill, !typeFilter && styles.pillActive]} onPress={() => setTypeFilter(null)}>
-                  <Text style={[styles.pillText, !typeFilter && styles.pillTextActive]}>All</Text>
+                  <Text style={[styles.pillText, !typeFilter && styles.pillTextActive]}>{S.common.all}</Text>
                 </TouchableOpacity>
                 {types.filter(t => t.active).map(t => (
                   <TouchableOpacity key={t.id} style={[styles.pill, typeFilter === t.id && styles.pillActive]} onPress={() => setTypeFilter(t.id)}>
@@ -321,15 +341,15 @@ export default function AppointmentsScreen() {
             )}
 
             {months.length === 0 ? (
-              <Card flat><Text style={styles.empty}>No open times in the year ahead. Check back later.</Text></Card>
+              <Card flat><Text style={styles.empty}>{T.empty.noSlots}</Text></Card>
             ) : months.map((month, mi) => (
               <View key={month.key}>
                 <TouchableOpacity style={styles.monthHeader} onPress={() => { H.tap(); toggleMonth(month.key, mi); }} activeOpacity={0.8}>
                   <Text style={styles.monthLabel}>{month.label}</Text>
                   <Text style={styles.monthCount}>
-                    {month.days.length} day{month.days.length !== 1 ? 's' : ''}
+                    {plural(S.common.days, month.days.length)}
                   </Text>
-                  <Text style={styles.monthChevron}>{monthOpen(month.key, mi) ? '⌄' : '›'}</Text>
+                  <Text style={styles.monthChevron}>{monthOpen(month.key, mi) ? '⌄' : GLYPH.forward}</Text>
                 </TouchableOpacity>
                 {monthOpen(month.key, mi) && month.days.map(day => (
                   <Card key={day.key} title={day.label} flat>
@@ -337,7 +357,7 @@ export default function AppointmentsScreen() {
                       {day.slots.map((s, i) => (
                         <TouchableOpacity key={i} style={styles.slot} onPress={() => { H.tap(); setPending(s); }}>
                           <Text style={styles.slotTime}>{formatTime(s.start)}</Text>
-                          <Text style={styles.slotType}>{s.typeLabel} · {s.duration}m</Text>
+                          <Text style={styles.slotType}>{fmt(T.slotMeta, { type: s.typeLabel, n: s.duration })}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -359,6 +379,7 @@ const styles = lazyThemed(() => StyleSheet.create({
 
   topbar: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
   chipBtn: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  chipBtnGap: { marginRight: 12 },
   chipBtnText: { fontSize: 18, color: colors.gold },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream },
 

@@ -14,49 +14,52 @@ import { encryptForSelf, encryptForRecipient, decryptSelf } from '@/lib/crypto';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
+import { S, fmt, fmtDate } from '@/lib/i18n';
+
+const T = S.prayer;
 
 type Visibility = 'private' | 'foc_only' | 'foc_and_servant' | 'servant_only';
 type Category = 'health' | 'family' | 'relationships' | 'work' | 'faith' | 'gratitude' | 'other';
 
 const CATEGORY_OPTS: { value: Category; label: string; icon: string }[] = [
-  { value: 'health', label: 'Health', icon: '✦' },
-  { value: 'family', label: 'Family', icon: '◉' },
-  { value: 'relationships', label: 'Relationships', icon: '◎' },
-  { value: 'work', label: 'Work / School', icon: '◇' },
-  { value: 'faith', label: 'Faith Journey', icon: '✝︎' },
-  { value: 'gratitude', label: 'Gratitude', icon: '◈' },
-  { value: 'other', label: 'Other', icon: '⊕' },
+  { value: 'health', label: T.categories.health, icon: '✦' },
+  { value: 'family', label: T.categories.family, icon: '◉' },
+  { value: 'relationships', label: T.categories.relationships, icon: '◎' },
+  { value: 'work', label: T.categories.work, icon: '◇' },
+  { value: 'faith', label: T.categories.faith, icon: '✝︎' },
+  { value: 'gratitude', label: T.categories.gratitude, icon: '◈' },
+  { value: 'other', label: T.categories.other, icon: '⊕' },
 ];
 
 const VISIBILITY_OPTS: { value: Visibility; chipLabel: string; icon: string }[] = [
-  { value: 'private', chipLabel: 'Private', icon: '🔒' },
-  { value: 'foc_only', chipLabel: 'Father of Confession', icon: '✝︎' },
-  { value: 'foc_and_servant', chipLabel: 'FOC + Servant', icon: '◉' },
-  { value: 'servant_only', chipLabel: 'Servant only', icon: '◎' },
+  { value: 'private', chipLabel: T.visibilityChips.private, icon: '🔒' },
+  { value: 'foc_only', chipLabel: T.visibilityChips.focOnly, icon: '✝︎' },
+  { value: 'foc_and_servant', chipLabel: T.visibilityChips.focAndServant, icon: '◉' },
+  { value: 'servant_only', chipLabel: T.visibilityChips.servantOnly, icon: '◎' },
 ];
 
 const VIS_DISPLAY: Record<Visibility, { icon: string; label: string }> = {
-  private: { icon: '🔒', label: 'Private — only me' },
-  foc_only: { icon: '✝︎', label: 'Visible to your Father of Confession only' },
-  foc_and_servant: { icon: '◉', label: 'Visible to your Father of Confession and Sunday school servant' },
-  servant_only: { icon: '◎', label: 'Sunday school servant only' },
+  private: { icon: '🔒', label: T.visibility.private },
+  foc_only: { icon: '✝︎', label: T.visibility.focOnly },
+  foc_and_servant: { icon: '◉', label: T.visibility.focAndServant },
+  servant_only: { icon: '◎', label: T.visibility.servantOnly },
 };
 
 const DEMO_ACTIVE = [
-  { id: 'd1', topic: 'Health of my mother', created_at: '2026-06-03', body: 'My mother was diagnosed with a heart condition. Asking for Fr. Bishoy\'s prayers and guidance on how to support her spiritually.', visibility: 'foc_only' as Visibility, answered: false },
-  { id: 'd2', topic: 'Strength during the fast', created_at: '2026-05-31', body: 'Struggling with consistency in the Apostles\' Fast. Asking for prayers for perseverance.', visibility: 'private' as Visibility, answered: false },
-  { id: 'd3', topic: 'New job transition', created_at: '2026-05-15', body: 'Starting a new role next month. Praying for wisdom, humility, and that God would direct my path.', visibility: 'private' as Visibility, answered: false },
+  { id: 'd1', topic: T.demo.motherTopic, created_at: '2026-06-03', body: T.demo.motherBody, visibility: 'foc_only' as Visibility, answered: false },
+  { id: 'd2', topic: T.demo.fastTopic, created_at: '2026-05-31', body: T.demo.fastBody, visibility: 'private' as Visibility, answered: false },
+  { id: 'd3', topic: T.demo.jobTopic, created_at: '2026-05-15', body: T.demo.jobBody, visibility: 'private' as Visibility, answered: false },
 ];
 
 const DEMO_ANSWERED = [
-  { id: 'da1', topic: 'Safe delivery of our daughter', created_at: '2026-05-02', answered_note: 'God blessed us with a healthy daughter. Giving thanks for answered prayer.', answered: true },
+  { id: 'da1', topic: T.demo.daughterTopic, created_at: '2026-05-02', answered_note: T.demo.daughterNote, answered: true },
 ];
 
 // Date-only strings parse as UTC midnight and can display as the previous day
 // locally — anchor them to local noon. Full ISO timestamps parse as-is.
 function fmtShortDate(iso: string): string {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T12:00:00') : new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDate(d, { month: 'short', day: 'numeric' });
 }
 
 // ── Request row — tap to reveal actions ──────────────────────
@@ -73,7 +76,7 @@ function ExpandableRequest({ item, onDelete, onMarkAnswered }: {
         <View style={styles.reqTop}>
           <Text style={styles.reqTitle}>
             {CATEGORY_OPTS.find(c => c.value === item.category)?.icon ?? '⊕'}{' '}
-            {CATEGORY_OPTS.find(c => c.value === item.category)?.label ?? item.topic ?? item.category ?? 'Request'}
+            {CATEGORY_OPTS.find(c => c.value === item.category)?.label ?? item.topic ?? item.category ?? T.requestFallback}
           </Text>
           <Text style={styles.reqDate}>{fmtShortDate(item.created_at)}</Text>
         </View>
@@ -90,14 +93,14 @@ function ExpandableRequest({ item, onDelete, onMarkAnswered }: {
               style={[styles.actionBtn, styles.actionAnswer]}
               onPress={() => { setOpen(false); onMarkAnswered(); }}
             >
-              <Text style={styles.actionAnswerText}>✓ Mark Answered</Text>
+              <Text style={styles.actionAnswerText}>{T.markAnswered}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionDelete]}
             onPress={() => { setOpen(false); onDelete(); }}
           >
-            <Text style={styles.actionDeleteText}>✕ Delete</Text>
+            <Text style={styles.actionDeleteText}>{T.delete}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -177,7 +180,7 @@ export default function PrayerScreen() {
     const { data, error } = await db.insertPrayerRequest(row);
     setSubmitting(false);
     if (error || !data) {
-      setSubmitError('Failed to submit — please try again.');
+      setSubmitError(T.submitError);
       return;
     }
     setActive(prev => [{ ...data, body: body.trim() || null }, ...prev]);
@@ -187,7 +190,7 @@ export default function PrayerScreen() {
   }
 
   async function handleDelete(id: string) {
-    confirmDestructive('Delete Request', 'Remove this prayer request?', 'Delete', async () => {
+    confirmDestructive(T.deleteRequestTitle, T.deleteRequestBody, S.common.delete, async () => {
       setActive(prev => prev.filter(r => r.id !== id));
       if (!demoMode) await db.deletePrayerRequest(id);
     });
@@ -205,7 +208,7 @@ export default function PrayerScreen() {
   }
 
   async function handleDeleteAnswered(id: string) {
-    confirmDestructive('Delete', 'Remove this answered prayer?', 'Delete', async () => {
+    confirmDestructive(T.deleteAnsweredTitle, T.deleteAnsweredBody, S.common.delete, async () => {
       setAnswered(prev => prev.filter(r => r.id !== id));
       if (!demoMode) await db.deletePrayerRequest(id);
     });
@@ -217,19 +220,19 @@ export default function PrayerScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>Prayer Requests</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
-        <Text style={styles.pageSubtitle}>Submit, track, and mark answered prayers</Text>
+        <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
         {/* Active Requests */}
-        <Card title={`Active (${active.length})`} flat>
+        <Card title={fmt(T.activeTitle, { n: active.length })} flat>
           {loading ? (
             <ActivityIndicator color={colors.gold} style={{ paddingVertical: 20 }} />
           ) : active.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>◇</Text>
-              <Text style={styles.emptyTitle}>No active requests</Text>
-              <Text style={styles.emptyBody}>Add your first prayer request below.</Text>
+              <Text style={styles.emptyTitle}>{T.emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{T.emptyBody}</Text>
             </View>
           ) : (
             active.map(req => (
@@ -244,13 +247,13 @@ export default function PrayerScreen() {
         </Card>
 
         {/* New Request */}
-        <Card title="New Request" titleIcon="✦">
+        <Card title={T.newRequest} titleIcon="✦">
           <View style={styles.privacyBanner}>
             <Text style={styles.privacyBannerText}>
-              Prayer details are encrypted on your device before storage. Only the intended recipient's device can decrypt them — not even Nepsis can read them.
+              {T.encryptionNote}
             </Text>
           </View>
-          <Text style={styles.formLabel}>CATEGORY</Text>
+          <Text style={styles.formLabel}>{T.categoryLabel}</Text>
           <View style={styles.categoryGrid}>
             {CATEGORY_OPTS.map(opt => (
               <TouchableOpacity
@@ -264,7 +267,7 @@ export default function PrayerScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={[styles.formLabel, { marginTop: 14 }]}>VISIBILITY</Text>
+          <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.visibilityLabel}</Text>
           <View style={styles.visChipRow}>
             {VISIBILITY_OPTS.map(opt => (
               <TouchableOpacity
@@ -282,11 +285,11 @@ export default function PrayerScreen() {
           {visibility !== 'private' && (
             <Text style={styles.visDescription}>{VIS_DISPLAY[visibility].label}</Text>
           )}
-          <Text style={[styles.formLabel, { marginTop: 14 }]}>DETAILS (OPTIONAL)</Text>
+          <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.detailsLabel}</Text>
           <TextInput
             style={styles.bodyInput}
             multiline
-            placeholder="Describe your request — this is encrypted and only readable by the recipient(s) you chose above."
+            placeholder={T.detailsPlaceholder}
             placeholderTextColor={colors.faint}
             value={body}
             onChangeText={setBody}
@@ -299,7 +302,7 @@ export default function PrayerScreen() {
           >
             {submitting
               ? <ActivityIndicator color={colors.navy} />
-              : <Text style={styles.btnGoldText}>SUBMIT REQUEST</Text>
+              : <Text style={styles.btnGoldText}>{T.submit}</Text>
             }
           </TouchableOpacity>
           <PrivacyNote text={PRIVACY_COPY.prayer} />
@@ -307,7 +310,7 @@ export default function PrayerScreen() {
 
         {/* Answered Prayers */}
         {answered.length > 0 && (
-          <Card title={`Answered (${answered.length})`} flat>
+          <Card title={fmt(T.answeredTitle, { n: answered.length })} flat>
             {answered.map(req => (
               <ExpandableRequest
                 key={req.id}

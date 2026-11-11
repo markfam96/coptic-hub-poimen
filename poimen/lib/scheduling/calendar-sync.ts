@@ -22,6 +22,7 @@
 import { Platform } from 'react-native';
 import { userStorage as AsyncStorage } from '@/lib/storage';
 import type { Appointment } from '@/lib/db';
+import { S, fmt } from '@/lib/i18n';
 
 const KEY = 'poimen.calendarSync';
 
@@ -211,10 +212,10 @@ async function doReconcile(
     }
     try {
       const eventId = await Calendar.createEventAsync(state.calendarId, {
-        title: `${a.type_label} — ${memberName(a.congregant_id)}`,
+        title: fmt(S.appointments.calendarEvent.title, { type: a.type_label, member: memberName(a.congregant_id) }),
         startDate: start,
         endDate: new Date(start.getTime() + a.duration_minutes * 60_000),
-        notes: 'Booked through Poimen. This event blocks the time on Calendly and anywhere else that reads this calendar.',
+        notes: S.appointments.calendarEvent.notes,
       });
       state.events[a.id] = { eventId, startsAt: a.starts_at };
       state.eventsCalendarId = state.calendarId;

@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Church } from '@/lib/db';
-import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { colors, fonts, lazyThemed, arabicFontSize } from '@/lib/theme';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
 import { rankByDistance, type LatLng } from '@/lib/geo';
 import { getApproxLocation } from '@/lib/location';
@@ -26,9 +26,12 @@ import { type ChurchChoice, unlistedNameValid, CHURCH_NAME_MAX } from '@/lib/chu
 import {
   formatChurchAddress, formatChurchLocality, displayNickname, precisionLabel,
   formatDistance, distanceUnitFor, churchSearchKey, matchesQuery,
-  CHURCH_DIRECTORY_URL, CHURCH_DIRECTORY_SUGGEST_URL, CHURCH_DIRECTORY_CREDIT,
+  CHURCH_DIRECTORY_URL, CHURCH_DIRECTORY_SUGGEST_URL,
   type DistanceUnit,
 } from '@/lib/church-display';
+import { S, fmt, GLYPH, isRTL } from '@/lib/i18n';
+
+const T = S.church;
 
 export type ChurchListStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
@@ -36,16 +39,16 @@ export type ChurchListStatus = 'idle' | 'loading' | 'ready' | 'failed';
 // reading distances, and there is no account yet at sign-up.
 const UNIT_KEY = 'poimen.churches.unit';
 
-const FIELD_LOADING = 'Loading churches…';
-const FIELD_FAILED = "Couldn't load the church list — tap to retry or type your church";
-const LIST_FAILED = "Couldn't load the church list. Check your connection and try again.";
-const DENIED = 'Location is off for Nepsis, so the list stays A–Z. Open Settings →';
+const FIELD_LOADING = T.field.loading;
+const FIELD_FAILED = T.field.failed;
+const LIST_FAILED = T.picker.listFailed;
+const DENIED = T.picker.locationDenied;
 // react-native-web's Linking has no openSettings, and the remedy there is the
 // browser's site permission, not a Settings app.
-const DENIED_WEB = 'Location is blocked for this site, so the list stays A–Z. Allow it in your browser’s site settings, then tap Sort by nearest again.';
-const UNAVAILABLE = 'Location isn’t available right now, so the list stays A–Z.';
-const UNLISTED_HINT = "We'll save the name you type.";
-const UNLISTED_SUGGEST = 'Suggest the church to the directory →';
+const DENIED_WEB = T.picker.locationDeniedWeb;
+const UNAVAILABLE = T.picker.locationUnavailable;
+const UNLISTED_HINT = T.picker.unlistedHint;
+const UNLISTED_SUGGEST = T.picker.unlistedSuggest;
 
 // Hermes may report a bare "en"; distanceUnitFor falls through to the
 // nearest church's country in that case. Wrapped because Intl itself has
@@ -70,7 +73,7 @@ export function ChurchField(p: {
   // The two call sites size their field text differently (15 / 14).
   textSize?: number;
 }) {
-  const { value, status, placeholder = 'Choose your church…', onPress, style, textSize = 15 } = p;
+  const { value, status, placeholder = T.field.placeholder, onPress, style, textSize = 15 } = p;
   let line1: string;
   let line2: string | null = null;
   let placeholderLook = false;
@@ -79,7 +82,7 @@ export function ChurchField(p: {
     line2 = formatChurchLocality(value.church) || null;
   } else if (value?.kind === 'unlisted') {
     line1 = value.name;
-    line2 = `${value.city.trim() ? `${value.city.trim()} · ` : ''}Not in the directory yet`;
+    line2 = value.city.trim() ? fmt(T.field.notInDirectoryWithCity, { city: value.city.trim() }) : T.field.notInDirectory;
   } else {
     placeholderLook = true;
     line1 = status === 'loading' ? FIELD_LOADING : status === 'failed' ? FIELD_FAILED : placeholder;
@@ -87,12 +90,12 @@ export function ChurchField(p: {
   return (
     <TouchableOpacity style={[styles.field, style]} onPress={onPress} activeOpacity={0.7} accessibilityRole="button">
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.fieldText, { fontSize: textSize }, placeholderLook && styles.fieldPlaceholder]} numberOfLines={2}>
+        <Text style={[styles.fieldText, { fontSize: isRTL ? arabicFontSize(textSize) : textSize }, placeholderLook && styles.fieldPlaceholder]} numberOfLines={2}>
           {line1}
         </Text>
         {line2 ? <Text style={styles.fieldSub} numberOfLines={1}>{line2}</Text> : null}
       </View>
-      <Text style={styles.fieldChevron} accessibilityElementsHidden importantForAccessibility="no">›</Text>
+      <Text style={styles.fieldChevron} accessibilityElementsHidden importantForAccessibility="no">{GLYPH.forward}</Text>
     </TouchableOpacity>
   );
 }
@@ -118,7 +121,7 @@ export function ChurchPicker(p: {
 }) {
   const {
     visible, onClose, value, onChange, churches, status, loadError, onRetry,
-    allowUnlisted = true, initialQuery, title = 'Select Your Church',
+    allowUnlisted = true, initialQuery, title = T.picker.title,
   } = p;
 
   const [query, setQuery] = useState('');
@@ -219,7 +222,7 @@ export function ChurchPicker(p: {
             style={styles.pickerSearch}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search by name, nickname or city…"
+            placeholder={T.picker.searchPlaceholder}
             placeholderTextColor={colors.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
@@ -230,14 +233,14 @@ export function ChurchPicker(p: {
               <View style={styles.nearRow}>
                 <TouchableOpacity onPress={sortByNearest} disabled={nearStatus === 'locating'} activeOpacity={0.7} hitSlop={8} accessibilityRole="button">
                   <Text style={styles.nearBtn}>
-                    {nearStatus === 'locating' ? 'Finding churches near you…'
-                      : here ? 'Sorted by nearest · Show A–Z'
-                      : '◎ Sort by nearest'}
+                    {nearStatus === 'locating' ? T.picker.locating
+                      : here ? T.picker.sortedByNearest
+                      : T.picker.sortByNearest}
                   </Text>
                 </TouchableOpacity>
                 {here && (
-                  <TouchableOpacity onPress={flipUnit} hitSlop={8} accessibilityLabel="Switch distance unit">
-                    <Text style={styles.unitLabel}>{unit}</Text>
+                  <TouchableOpacity onPress={flipUnit} hitSlop={8} accessibilityLabel={T.picker.switchUnit}>
+                    <Text style={styles.unitLabel}>{T.distance[unit]}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -271,7 +274,7 @@ export function ChurchPicker(p: {
                 const nick = displayNickname(c);
                 const address = formatChurchAddress(c);
                 const approx = isApproximate(c);
-                const label = approx ? precisionLabel(c) : null;
+                const label = approx ? precisionLabel(c, T.precision) : null;
                 return (
                   <TouchableOpacity style={styles.pickerRow} onPress={() => pick(c)} accessibilityRole="button" accessibilityState={{ selected }}>
                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -282,7 +285,7 @@ export function ChurchPicker(p: {
                     </View>
                     {here && r.km != null && (
                       <View style={styles.distanceCol}>
-                        <Text style={styles.distance}>{formatDistance(r.km, unit, approx)}</Text>
+                        <Text style={styles.distance}>{formatDistance(r.km, unit, approx, T.distance)}</Text>
                         {label ? <Text style={styles.precision}>{label}</Text> : null}
                       </View>
                     )}
@@ -294,8 +297,8 @@ export function ChurchPicker(p: {
               ListEmptyComponent={
                 <Text style={styles.pickerEmpty}>
                   {q
-                    ? `No church matches "${q}". Tap "My church isn't listed" to add it by name.`
-                    : 'No churches have been added yet.'}
+                    ? fmt(T.picker.noMatch, { query: q })
+                    : T.picker.empty}
                 </Text>
               }
             />
@@ -303,7 +306,7 @@ export function ChurchPicker(p: {
             <View style={styles.stateBlock}>
               <Text style={styles.pickerEmpty}>{LIST_FAILED}</Text>
               <TouchableOpacity style={styles.retryBtn} onPress={onRetry} activeOpacity={0.8}>
-                <Text style={styles.retryText}>Retry</Text>
+                <Text style={styles.retryText}>{S.common.retry}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -317,7 +320,7 @@ export function ChurchPicker(p: {
           {allowUnlisted && (
             <View style={styles.unlistedBlock}>
               <TouchableOpacity onPress={() => setUnlistedOpen(o => !o)} activeOpacity={0.7} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: unlistedOpen }}>
-                <Text style={styles.unlistedToggle}>My church isn't listed</Text>
+                <Text style={styles.unlistedToggle}>{T.picker.notListed}</Text>
               </TouchableOpacity>
               {unlistedOpen && (
                 <View style={styles.unlistedForm}>
@@ -325,7 +328,7 @@ export function ChurchPicker(p: {
                     style={styles.unlistedInput}
                     value={unlistedName}
                     onChangeText={setUnlistedName}
-                    placeholder="Church name"
+                    placeholder={T.picker.unlistedName}
                     placeholderTextColor={colors.faint}
                     autoCapitalize="words"
                     maxLength={CHURCH_NAME_MAX}
@@ -334,7 +337,7 @@ export function ChurchPicker(p: {
                     style={styles.unlistedInput}
                     value={unlistedCity}
                     onChangeText={setUnlistedCity}
-                    placeholder="City (optional)"
+                    placeholder={T.picker.unlistedCity}
                     placeholderTextColor={colors.faint}
                     autoCapitalize="words"
                     maxLength={CHURCH_NAME_MAX}
@@ -351,7 +354,7 @@ export function ChurchPicker(p: {
                     accessibilityRole="button"
                     accessibilityState={{ disabled: !unlistedNameValid(unlistedName) }}
                   >
-                    <Text style={styles.useNameText}>Use this name</Text>
+                    <Text style={styles.useNameText}>{T.picker.useThisName}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -359,11 +362,11 @@ export function ChurchPicker(p: {
           )}
 
           <TouchableOpacity onPress={() => Linking.openURL(CHURCH_DIRECTORY_URL)} hitSlop={8} accessibilityRole="link">
-            <Text style={styles.credit}>{CHURCH_DIRECTORY_CREDIT}</Text>
+            <Text style={styles.credit}>{T.picker.directoryCredit}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.pickerCancel} onPress={onClose} accessibilityRole="button">
-            <Text style={styles.pickerCancelText}>Cancel</Text>
+            <Text style={styles.pickerCancelText}>{S.common.cancel}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -398,9 +401,11 @@ const styles = lazyThemed(() => StyleSheet.create({
 
   list: { flexShrink: 1 },
   pickerRow: { paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  pickerRowName: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.cream },
+  // textAlign: church names are in Latin script; without it they align as
+  // left-to-right paragraphs on the Arabic web layout.
+  pickerRowName: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.cream, textAlign: 'left' },
   pickerRowNameActive: { color: colors.goldLight },
-  pickerRowAddress: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 2 },
+  pickerRowAddress: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 2, textAlign: 'left' },
   distanceCol: { alignItems: 'flex-end' },
   distance: { fontFamily: fonts.lato, fontSize: 12, color: colors.muted },
   // Muted, not faint: this label is what stops "~0.3 mi" to a city centroid

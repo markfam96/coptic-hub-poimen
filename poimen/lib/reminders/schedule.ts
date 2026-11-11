@@ -22,6 +22,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ReminderKind, loadReminderSettings } from './store';
 import { canonReminder, psalmsReminder, loadCanonContext, loadPsalmContext } from './content';
+import { S } from '@/lib/i18n';
 
 // Two weeks of lead time. Every scheduled notification counts against iOS's
 // 64-pending limit, and at two kinds per day this peaks at 28 — comfortably
@@ -83,7 +84,7 @@ async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: 'Prayer reminders',
+      name: S.reminders.notification.channelName,
       importance: Notifications.AndroidImportance.DEFAULT,
       sound: null,
       vibrationPattern: [0, 200],

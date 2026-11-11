@@ -18,7 +18,8 @@ import { useDemoMode } from '@/lib/demo';
 import {
   RuleConfig, DayPlan, ServiceCommitment, loadRule, saveRule,
   AGPEYA_HOURS, SERVICES, CONFESSION_OPTIONS, SERVICE_FREQUENCY_OPTIONS,
-  FAST_UNTIL_OPTIONS, WEEKDAYS, MAX_SERVICE_COUNT, setServicesMode,
+  FAST_UNTIL_OPTIONS, WEEKDAY_NAMES, MAX_SERVICE_COUNT, setServicesMode,
+  freqLabel, fastUntilLabel, ReadMode,
 } from '@/lib/canon/rule-store';
 import { periodUnit, maxPerPeriod } from '@/lib/canon/periods';
 import { hydrateRuleFromCloud, pushRuleToCloud } from '@/lib/canon/rule-sync';
@@ -27,21 +28,35 @@ import {
 } from '@/lib/canon/assigned';
 import { lastConfessionDate } from '@/lib/confession/dates';
 import ScrollPicker from '@/components/ui/ScrollPicker';
+import { S, fmt, plural, GLYPH } from '@/lib/i18n';
+
+const T = S.canon.rule;
+
+// The picker shows the translated time; what is saved is still the option at
+// the same position in FAST_UNTIL_OPTIONS.
+const FAST_UNTIL_LABELS = FAST_UNTIL_OPTIONS.map(fastUntilLabel);
+
+// A locked reading amount: "3 chapters", "15 minutes".
+const readAmount = (mode: ReadMode, n: number) => plural(mode === 'chapters' ? T.amountChapters : T.amountMinutes, n);
+const minutesShort = (n: number) => plural(T.minutesShort, n);
+// A locked counted service, one sentence per frequency (an unknown one reads
+// as weekly, as periodUnit does).
+const lockedCountFor = (freq: string) => (T.lockedCount as Record<string, string>)[freq] ?? T.lockedCount.Weekly;
 
 const SP = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28 };
 const R = { md: 10, lg: 12, full: 999 };
 
 // ─── Small controls ───────────────────────────────────────────────────────────
 
-function Stepper({ value, onChange, min = 0, max = 999, step = 1, unit }: {
-  value: number; onChange: (n: number) => void; min?: number; max?: number; step?: number; unit?: string;
+function Stepper({ value, onChange, min = 0, max = 999, step = 1, format }: {
+  value: number; onChange: (n: number) => void; min?: number; max?: number; step?: number; format?: (n: number) => string;
 }) {
   return (
     <View style={s.stepperRow}>
       <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.max(min, value - step))}>
         <Text style={s.stepBtnText}>−</Text>
       </TouchableOpacity>
-      <Text style={s.stepValue}>{value}{unit ? ` ${unit}` : ''}</Text>
+      <Text style={s.stepValue}>{format ? format(value) : value}</Text>
       <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.min(max, value + step))}>
         <Text style={s.stepBtnText}>+</Text>
       </TouchableOpacity>
@@ -76,8 +91,7 @@ function LockNote() {
   return (
     <View style={s.lockNote}>
       <Text style={s.lockNoteText}>
-        🔒 Set by your Father of Confession — you can't change this until your next confession,
-        or until he changes or removes it.
+        {T.lockNote}
       </Text>
     </View>
   );
@@ -199,68 +213,67 @@ export default function RuleScreen() {
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => goBack('/(tabs)/canon')} hitSlop={8}>
-          <Text style={s.headerBack}>‹ Canon</Text>
+          <Text style={s.headerBack}>{GLYPH.back} {T.backToCanon}</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Edit Rule</Text>
-        <View style={{ width: 54, alignItems: 'flex-end' }}>
+        <Text style={s.headerTitle}>{T.title}</Text>
+        <View style={{ minWidth: 54, alignItems: 'flex-end' }}>
           {saveState !== 'idle' && (
-            <Text style={s.saveStatus}>{saveState === 'saving' ? 'Saving…' : 'Saved ✓'}</Text>
+            <Text style={s.saveStatus}>{saveState === 'saving' ? S.common.saving : T.savedTick}</Text>
           )}
         </View>
       </View>
       <ScrollView ref={scroller} contentContainerStyle={{ padding: SP.lg, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={s.note}>
-          Set your rule together with your father of confession. Add only what you can keep faithfully.
+          {T.intro}
         </Text>
 
         {anyLock && (
           <View style={s.banner}>
             <Text style={s.bannerText}>
-              🔒 Some parts of your canon were set by your Father of Confession. Those are read-only until
-              your next confession, or until he changes them. You can still edit the rest.
+              {T.lockBanner}
             </Text>
           </View>
         )}
 
         {/* Daily */}
-        <Text style={s.sectionLabel} onLayout={onAnchorLayout('everyday')}>Every day</Text>
+        <Text style={s.sectionLabel} onLayout={onAnchorLayout('everyday')}>{T.everyDay}</Text>
         {isLocked('prostrations') ? (
           <>
-            <FieldRow label="Prostrations (metanias)"><LockedValue text={`${effRule.prostrations}`} /></FieldRow>
+            <FieldRow label={T.prostrations}><LockedValue text={`${effRule.prostrations}`} /></FieldRow>
             <LockNote />
           </>
         ) : (
           <>
-            <FieldRow label="Prostrations (metanias)">
+            <FieldRow label={T.prostrations}>
               <Stepper value={rule.prostrations} onChange={n => update({ ...rule, prostrations: n })} max={500} />
             </FieldRow>
-            <Text style={s.fieldNote}>Not done on Saturdays, Sundays, or during the Holy Fifty.</Text>
+            <Text style={s.fieldNote}>{T.prostrationsNote}</Text>
           </>
         )}
         {isLocked('quiet') ? (
           <>
-            <FieldRow label="Quiet time"><LockedValue text={`${effRule.quietMinutes} min`} /></FieldRow>
+            <FieldRow label={T.quietTime}><LockedValue text={minutesShort(effRule.quietMinutes)} /></FieldRow>
             <LockNote />
           </>
         ) : (
-          <FieldRow label="Quiet time">
-            <Stepper value={rule.quietMinutes} onChange={n => update({ ...rule, quietMinutes: n })} step={5} max={180} unit="min" />
+          <FieldRow label={T.quietTime}>
+            <Stepper value={rule.quietMinutes} onChange={n => update({ ...rule, quietMinutes: n })} step={5} max={180} format={minutesShort} />
           </FieldRow>
         )}
 
         {/* Fasting */}
         <View style={s.card}>
           <View style={s.cardHead}>
-            <Text style={s.cardTitle}>Fast until (on fasting days)</Text>
-            <Text style={[s.cardTitle, { color: colors.goldLight }]}>{isLocked('fasting') ? effRule.fastUntil : rule.fastUntil}</Text>
+            <Text style={s.cardTitle}>{T.fastUntil}</Text>
+            <Text style={[s.cardTitle, { color: colors.goldLight }]}>{fastUntilLabel(isLocked('fasting') ? effRule.fastUntil : rule.fastUntil)}</Text>
           </View>
           {isLocked('fasting') ? (
             <LockNote />
           ) : (
             <>
-              <ScrollPicker options={FAST_UNTIL_OPTIONS} value={rule.fastUntil} onChange={v => update({ ...rule, fastUntil: v })} />
+              <ScrollPicker options={FAST_UNTIL_LABELS} value={fastUntilLabel(rule.fastUntil)} onChange={v => update({ ...rule, fastUntil: FAST_UNTIL_OPTIONS[FAST_UNTIL_LABELS.indexOf(v)] ?? rule.fastUntil })} />
               <Text style={[s.fieldNote, { marginTop: 4 }]}>
-                Wednesdays, Fridays, and the Church's fasting seasons are fasting days automatically, except during the Holy Fifty.
+                {T.fastNote}
               </Text>
             </>
           )}
@@ -268,13 +281,13 @@ export default function RuleScreen() {
 
         {/* Bible reading */}
         <View style={s.card}>
-          <Text style={s.cardTitle}>Bible reading</Text>
+          <Text style={s.cardTitle}>{T.bibleReading}</Text>
           {isLocked('bible') ? (
-            <><LockedValue text={`${effRule.bible.amount} ${effRule.bible.mode}`} /><LockNote /></>
+            <><LockedValue text={readAmount(effRule.bible.mode, effRule.bible.amount)} /><LockNote /></>
           ) : (
             <View style={s.chipRow}>
-              <Chip label="Chapters" on={rule.bible.mode === 'chapters'} onPress={() => update({ ...rule, bible: { ...rule.bible, mode: 'chapters' } })} />
-              <Chip label="Minutes"  on={rule.bible.mode === 'minutes'}  onPress={() => update({ ...rule, bible: { ...rule.bible, mode: 'minutes' } })} />
+              <Chip label={T.chapters} on={rule.bible.mode === 'chapters'} onPress={() => update({ ...rule, bible: { ...rule.bible, mode: 'chapters' } })} />
+              <Chip label={T.minutes}  on={rule.bible.mode === 'minutes'}  onPress={() => update({ ...rule, bible: { ...rule.bible, mode: 'minutes' } })} />
               <View style={{ flex: 1 }} />
               <Stepper value={rule.bible.amount} onChange={n => update({ ...rule, bible: { ...rule.bible, amount: n } })} step={rule.bible.mode === 'minutes' ? 5 : 1} max={180} />
             </View>
@@ -284,28 +297,28 @@ export default function RuleScreen() {
         {/* Spiritual book */}
         <View style={s.card}>
           <View style={s.cardHead}>
-            <Text style={s.cardTitle}>Spiritual book</Text>
+            <Text style={s.cardTitle}>{T.spiritualBook}</Text>
             {!isLocked('book') && (rule.book ? (
-              <TouchableOpacity onPress={() => update({ ...rule, book: null })}><Text style={{ color: colors.red, fontSize: 12, fontFamily: fonts.lato }}>Remove</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => update({ ...rule, book: null })}><Text style={{ color: colors.red, fontSize: 12, fontFamily: fonts.lato }}>{S.common.remove}</Text></TouchableOpacity>
             ) : (
-              <TouchableOpacity onPress={() => update({ ...rule, book: { title: '', mode: 'chapters', amount: 1 } })}><Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold }}>+ Add</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => update({ ...rule, book: { title: '', mode: 'chapters', amount: 1 } })}><Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold }}>{T.addPlus}</Text></TouchableOpacity>
             ))}
           </View>
           {isLocked('book') && (
-            <><LockedValue text={effRule.book ? `${effRule.book.title || 'A spiritual book'} · ${effRule.book.amount} ${effRule.book.mode}` : 'None'} /><LockNote /></>
+            <><LockedValue text={effRule.book ? fmt(T.lockedBook, { title: effRule.book.title || T.lockedBookFallback, amount: readAmount(effRule.book.mode, effRule.book.amount) }) : S.common.none} /><LockNote /></>
           )}
           {!isLocked('book') && rule.book && (
             <>
               <TextInput
                 style={s.input}
-                placeholder="Book title (e.g. The Spiritual Ladder)"
+                placeholder={T.bookPlaceholder}
                 placeholderTextColor={colors.muted}
                 value={rule.book.title}
                 onChangeText={t => update({ ...rule, book: { ...rule.book!, title: t } })}
               />
               <View style={[s.chipRow, { marginTop: SP.sm }]}>
-                <Chip label="Chapters" on={rule.book.mode === 'chapters'} onPress={() => update({ ...rule, book: { ...rule.book!, mode: 'chapters' } })} />
-                <Chip label="Minutes"  on={rule.book.mode === 'minutes'}  onPress={() => update({ ...rule, book: { ...rule.book!, mode: 'minutes' } })} />
+                <Chip label={T.chapters} on={rule.book.mode === 'chapters'} onPress={() => update({ ...rule, book: { ...rule.book!, mode: 'chapters' } })} />
+                <Chip label={T.minutes}  on={rule.book.mode === 'minutes'}  onPress={() => update({ ...rule, book: { ...rule.book!, mode: 'minutes' } })} />
                 <View style={{ flex: 1 }} />
                 <Stepper value={rule.book.amount} onChange={n => update({ ...rule, book: { ...rule.book!, amount: n } })} step={rule.book.mode === 'minutes' ? 5 : 1} max={180} />
               </View>
@@ -315,13 +328,13 @@ export default function RuleScreen() {
 
         {/* Confession */}
         <View style={s.card}>
-          <Text style={s.cardTitle}>Confession frequency</Text>
+          <Text style={s.cardTitle}>{T.confessionFrequency}</Text>
           {isLocked('confession') ? (
-            <><LockedValue text={effRule.confession} /><LockNote /></>
+            <><LockedValue text={freqLabel(effRule.confession)} /><LockNote /></>
           ) : (
             <View style={[s.chipRow, { flexWrap: 'wrap' }]}>
               {CONFESSION_OPTIONS.map(opt => (
-                <Chip key={opt} label={opt} on={rule.confession === opt} onPress={() => update({ ...rule, confession: opt })} />
+                <Chip key={opt} label={freqLabel(opt)} on={rule.confession === opt} onPress={() => update({ ...rule, confession: opt })} />
               ))}
             </View>
           )}
@@ -329,21 +342,21 @@ export default function RuleScreen() {
 
         {/* Church services — specific days OR a number of times per week */}
         <View style={s.card}>
-          <Text style={s.sectionLabel} onLayout={onAnchorLayout('services')}>Church services</Text>
+          <Text style={s.sectionLabel} onLayout={onAnchorLayout('services')}>{T.churchServices}</Text>
           {isLocked('services') ? (
             <>
               {effRule.servicesMode === 'counts' ? (
                 <View style={[s.chipRow, { flexWrap: 'wrap' }]}>
                   {SERVICES.filter(sv => (effRule.serviceCounts?.[sv.key]?.n ?? 0) > 0).length === 0
-                    ? <Text style={s.mutedSmall}>None</Text>
+                    ? <Text style={s.mutedSmall}>{S.common.none}</Text>
                     : SERVICES.filter(sv => (effRule.serviceCounts?.[sv.key]?.n ?? 0) > 0).map(sv => (
                         <View key={sv.key} style={s.roChip}>
-                          <Text style={s.roChipText}>{sv.name} · {effRule.serviceCounts[sv.key].n}{periodUnit(effRule.serviceCounts[sv.key].freq).replace('× ', '')}</Text>
+                          <Text style={s.roChipText}>{fmt(lockedCountFor(effRule.serviceCounts[sv.key].freq), { service: sv.name, n: effRule.serviceCounts[sv.key].n })}</Text>
                         </View>
                       ))}
                 </View>
               ) : (
-                <Text style={s.mutedSmall}>Set on specific days below.</Text>
+                <Text style={s.mutedSmall}>{T.setOnDaysBelow}</Text>
               )}
               <LockNote />
             </>
@@ -352,18 +365,18 @@ export default function RuleScreen() {
             // they're committed, so the mode can't be switched here. Only the
             // weekdays he didn't set stay editable, in the day cards below.
             <>
-              <Text style={s.mutedSmall}>Set on specific days below.</Text>
+              <Text style={s.mutedSmall}>{T.setOnDaysBelow}</Text>
               <LockNote />
             </>
           ) : (
             <>
               <Text style={s.helpText}>
-                Commit either to specific days of the week, or to a number of times per week that you log as you attend — one or the other, not both.
+                {T.servicesHelp}
               </Text>
               <View style={[s.chipRow, { marginTop: SP.sm }]}>
-                <Chip label="Specific days" on={rule.servicesMode === 'days'}
+                <Chip label={T.specificDays} on={rule.servicesMode === 'days'}
                   onPress={() => update(setServicesMode(rule, 'days'))} />
-                <Chip label="Times per week" on={rule.servicesMode === 'counts'}
+                <Chip label={T.timesPerWeek} on={rule.servicesMode === 'counts'}
                   onPress={() => update(setServicesMode(rule, 'counts'))} />
               </View>
               {rule.servicesMode === 'counts' && (
@@ -387,13 +400,13 @@ export default function RuleScreen() {
                             value={cfg?.n ?? 0}
                             onChange={n => setCount(n)}
                             max={maxPerPeriod(freq)}
-                            unit={periodUnit(freq)}
+                            format={n => fmt(S.canon.countWithUnit, { n, unit: periodUnit(freq, S.canon.periodUnits) })}
                           />
                         </FieldRow>
                         {(cfg?.n ?? 0) > 0 && (
                           <View style={[s.chipRow, { flexWrap: 'wrap', marginTop: 6 }]}>
                             {SERVICE_FREQUENCY_OPTIONS.map(f => (
-                              <Chip key={f} label={f} on={freq === f}
+                              <Chip key={f} label={freqLabel(f)} on={freq === f}
                                 onPress={() => setCount(cfg?.n ?? 1, f)} />
                             ))}
                           </View>
@@ -402,7 +415,7 @@ export default function RuleScreen() {
                     );
                   })}
                   <Text style={s.helpText}>
-                    These appear in your canon every day until you've logged them for the period.
+                    {T.countsHelp}
                   </Text>
                 </View>
               )}
@@ -411,25 +424,25 @@ export default function RuleScreen() {
         </View>
 
         {/* By day of week */}
-        <Text style={[s.sectionLabel, { marginTop: SP.lg }]}>For each day of the week</Text>
+        <Text style={[s.sectionLabel, { marginTop: SP.lg }]}>{T.eachDay}</Text>
         <View onLayout={onAnchorLayout('days')} />
-        {WEEKDAYS.map((name, i) => {
+        {WEEKDAY_NAMES.map((name, i) => {
           const d = rule.days[i];
           const ed = effRule.days[i];   // effective (includes any FOC-locked parts) — for the summary
           const open = expandedDay === i;
           const autoFast = i === 3 || i === 5;
           const serveCount = ed.serving.filter(x => x.text.trim()).length;
           const summary = [
-            ed.hours.length ? `${ed.hours.length} hours` : null,
-            effRule.servicesMode === 'days' && ed.services.length ? `${ed.services.length} services` : null,
-            serveCount ? `${serveCount} serving` : null,
-            autoFast ? 'fast day' : null,
-          ].filter(Boolean).join(' · ') || 'Nothing set';
+            ed.hours.length ? plural(T.summaryHours, ed.hours.length) : null,
+            effRule.servicesMode === 'days' && ed.services.length ? plural(T.summaryServices, ed.services.length) : null,
+            serveCount ? plural(T.summaryServing, serveCount) : null,
+            autoFast ? T.summaryFastDay : null,
+          ].filter(Boolean).join(' · ') || T.summaryNothing;
           return (
             <View key={i} style={[s.dayCard, { borderColor: open ? colors.gold : colors.border }]}>
               <TouchableOpacity style={s.dayHead} onPress={() => setExpandedDay(open ? null : i)}>
                 <View>
-                  <Text style={s.dayName}>{name}{i === today ? '  · today' : ''}</Text>
+                  <Text style={s.dayName}>{i === today ? fmt(T.dayToday, { day: name }) : name}</Text>
                   <Text style={s.daySummary}>{summary}</Text>
                 </View>
                 <Text style={{ color: colors.muted, fontSize: 16 }}>{open ? '▲' : '▾'}</Text>
@@ -438,12 +451,12 @@ export default function RuleScreen() {
               {open && (
                 <View style={{ paddingTop: SP.sm }}>
                   {/* Agpeya hours */}
-                  <Text style={s.subLabel}>Agpeya hours</Text>
+                  <Text style={s.subLabel}>{T.agpeyaHours}</Text>
                   {isDayLocked('agpeya_hours', i) ? (
                     <>
                       <View style={[s.chipRow, { flexWrap: 'wrap' }]}>
                         {effRule.days[i].hours.length === 0
-                          ? <Text style={s.mutedSmall}>None</Text>
+                          ? <Text style={s.mutedSmall}>{S.common.none}</Text>
                           : AGPEYA_HOURS.filter(h => effRule.days[i].hours.includes(h.key)).map(h => (
                               <View key={h.key} style={s.roChip}><Text style={s.roChipText}>{h.name}</Text></View>
                             ))}
@@ -460,14 +473,14 @@ export default function RuleScreen() {
 
                   {/* Church services — only when committed by specific days;
                       in "times per week" mode they live in the card above. */}
-                  <Text style={[s.subLabel, { marginTop: SP.sm }]}>Church services</Text>
+                  <Text style={[s.subLabel, { marginTop: SP.sm }]}>{T.churchServices}</Text>
                   {effRule.servicesMode === 'counts' ? (
-                    <Text style={s.mutedSmall}>Set as times per week above.</Text>
+                    <Text style={s.mutedSmall}>{T.setAsCountsAbove}</Text>
                   ) : isDayLocked('services', i) ? (
                     <>
                       <View style={[s.chipRow, { flexWrap: 'wrap' }]}>
                         {effRule.days[i].services.length === 0
-                          ? <Text style={s.mutedSmall}>None</Text>
+                          ? <Text style={s.mutedSmall}>{S.common.none}</Text>
                           : SERVICES.filter(sv => effRule.days[i].services.includes(sv.key)).map(sv => (
                               <View key={sv.key} style={s.roChip}><Text style={s.roChipText}>{sv.name}</Text></View>
                             ))}
@@ -485,20 +498,20 @@ export default function RuleScreen() {
                   {/* Heart of Service */}
                   {isDayLocked('heart_of_service', i) ? (
                     <>
-                      <Text style={[s.subLabel, { marginTop: SP.sm }]}>Heart of Service</Text>
+                      <Text style={[s.subLabel, { marginTop: SP.sm }]}>{T.heartOfService}</Text>
                       {effRule.days[i].serving.filter(x => x.text.trim()).length === 0
-                        ? <Text style={s.mutedSmall}>None</Text>
+                        ? <Text style={s.mutedSmall}>{S.common.none}</Text>
                         : effRule.days[i].serving.filter(x => x.text.trim()).map((sv, j) => (
-                            <View key={j} style={s.roChip}><Text style={s.roChipText}>{sv.text}{sv.freq ? ` · ${sv.freq}` : ''}</Text></View>
+                            <View key={j} style={s.roChip}><Text style={s.roChipText}>{sv.freq ? fmt(T.servingWithFreq, { text: sv.text, freq: freqLabel(sv.freq) }) : sv.text}</Text></View>
                           ))}
                       <LockNote />
                     </>
                   ) : (
                     <>
                       <View style={s.serveHead}>
-                        <Text style={[s.subLabel, { marginBottom: 0 }]}>Heart of Service</Text>
+                        <Text style={[s.subLabel, { marginBottom: 0 }]}>{T.heartOfService}</Text>
                         <TouchableOpacity onPress={() => setDay(i, { serving: [...d.serving, { text: '', freq: 'Weekly' }] })} hitSlop={8}>
-                          <Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold }}>+ Add</Text>
+                          <Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold }}>{T.addPlus}</Text>
                         </TouchableOpacity>
                       </View>
                       {d.serving.map((sv, j) => (
@@ -506,26 +519,25 @@ export default function RuleScreen() {
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <TextInput
                               style={[s.input, { flex: 1 }]}
-                              placeholder="Your service (e.g. Sunday school, visiting the sick)"
+                              placeholder={T.servicePlaceholder}
                               placeholderTextColor={colors.muted}
                               value={sv.text}
                               onChangeText={t => patchServing(i, j, { text: t })}
                             />
                             <TouchableOpacity onPress={() => setDay(i, { serving: d.serving.filter((_, idx) => idx !== j) })} hitSlop={8}>
-                              <Text style={{ color: colors.red, fontSize: 12, fontFamily: fonts.lato, marginLeft: SP.sm }}>Remove</Text>
+                              <Text style={{ color: colors.red, fontSize: 12, fontFamily: fonts.lato, marginStart: SP.sm }}>{S.common.remove}</Text>
                             </TouchableOpacity>
                           </View>
                           <View style={[s.chipRow, { flexWrap: 'wrap', marginTop: SP.sm }]}>
                             {SERVICE_FREQUENCY_OPTIONS.map(opt => (
-                              <Chip key={opt} label={opt} on={sv.freq === opt} onPress={() => patchServing(i, j, { freq: opt })} />
+                              <Chip key={opt} label={freqLabel(opt)} on={sv.freq === opt} onPress={() => patchServing(i, j, { freq: opt })} />
                             ))}
                           </View>
                         </View>
                       ))}
                       {d.serving.length > 0 && (
                         <Text style={[s.fieldNote, { marginTop: 2, marginBottom: 0 }]}>
-                          A service appears each {name} until checked off, then rests for its
-                          frequency (a monthly service returns about a month after it's done).
+                          {fmt(T.serviceNote, { day: name })}
                         </Text>
                       )}
                     </>
@@ -533,7 +545,7 @@ export default function RuleScreen() {
 
                   {autoFast && (
                     <Text style={[s.fieldNote, { marginTop: SP.sm }]}>
-                      ✦ Automatically a fasting day (except during the Holy Fifty).
+                      {T.autoFast}
                     </Text>
                   )}
                 </View>
@@ -543,7 +555,7 @@ export default function RuleScreen() {
         })}
 
         <TouchableOpacity style={s.doneBtn} onPress={() => goBack('/(tabs)/canon')}>
-          <Text style={s.doneBtnText}>DONE — CHANGES SAVE AUTOMATICALLY</Text>
+          <Text style={s.doneBtnText}>{T.done}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -555,7 +567,7 @@ const s = lazyThemed(() => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SP.lg, paddingVertical: SP.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  headerBack: { fontFamily: fonts.lato, fontSize: 14, color: colors.gold, width: 54 },
+  headerBack: { fontFamily: fonts.lato, fontSize: 14, color: colors.gold, minWidth: 54 },
   headerTitle: { fontFamily: fonts.cormorantMedium, fontSize: 20, color: colors.cream },
   saveStatus: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted },
 

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getChurches, type Church } from '@/lib/db';
 import { CHURCH_CACHE_KEY, cacheIsFresh, parseChurchCache, serializeChurchCache } from '@/lib/church-list-cache';
+import { S } from '@/lib/i18n';
 
 export type ChurchListStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
@@ -27,7 +28,7 @@ export interface ChurchListState {
   reload: () => void;
 }
 
-const LOAD_ERROR = "Couldn't load the church list. Check your connection and try again.";
+const LOAD_ERROR = S.church.picker.listFailed;
 
 async function readCache(): Promise<{ fetchedAt: number; rows: Church[] } | null> {
   try { return parseChurchCache<Church>(await AsyncStorage.getItem(CHURCH_CACHE_KEY)); } catch { return null; }

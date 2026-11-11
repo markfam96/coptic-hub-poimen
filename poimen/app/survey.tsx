@@ -30,28 +30,31 @@ import type {
 } from '@/lib/db/survey';
 import { markPrompted } from '@/lib/survey/store';
 import * as H from '@/lib/haptics';
+import { S, fmt } from '@/lib/i18n';
+
+const T = S.survey;
 
 const Q1: { value: SurveyFrequency; label: string }[] = [
-  { value: 'daily',          label: 'Daily' },
-  { value: 'weekly_several', label: 'Several times a week' },
-  { value: 'weekly',         label: 'About once a week' },
-  { value: 'rarely',         label: 'Rarely' },
+  { value: 'daily',          label: T.q1.daily },
+  { value: 'weekly_several', label: T.q1.severalTimesAWeek },
+  { value: 'weekly',         label: T.q1.aboutOnceAWeek },
+  { value: 'rarely',         label: T.q1.rarely },
 ];
 
 const Q2: { value: SurveyConsistency; label: string }[] = [
-  { value: 'yes_clearly', label: 'Yes, noticeably' },
-  { value: 'a_little',    label: 'A little' },
-  { value: 'no_change',   label: 'No change' },
-  { value: 'no_canon',    label: "I don't use the canon" },
+  { value: 'yes_clearly', label: T.q2.yesNoticeably },
+  { value: 'a_little',    label: T.q2.aLittle },
+  { value: 'no_change',   label: T.q2.noChange },
+  { value: 'no_canon',    label: T.q2.noCanon },
 ];
 
 const Q3: { value: SurveyMostMissed; label: string }[] = [
-  { value: 'canon',        label: 'My canon' },
-  { value: 'confession',   label: 'Confession preparation' },
-  { value: 'psalms',       label: 'Psalms' },
-  { value: 'prayer',       label: 'Prayer requests' },
-  { value: 'journal',      label: 'Journal' },
-  { value: 'appointments', label: 'Appointments' },
+  { value: 'canon',        label: T.q3.canon },
+  { value: 'confession',   label: T.q3.confession },
+  { value: 'psalms',       label: T.q3.psalms },
+  { value: 'prayer',       label: T.q3.prayer },
+  { value: 'journal',      label: T.q3.journal },
+  { value: 'appointments', label: T.q3.appointments },
 ];
 
 const MAX = 1000;
@@ -68,7 +71,7 @@ function Option({ label, on, onPress }: { label: string; on: boolean; onPress: (
 function Question({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <Card title="" titleIcon="">
-      <Text style={styles.qNum}>QUESTION {n} OF 5</Text>
+      <Text style={styles.qNum}>{fmt(T.questionOf, { n })}</Text>
       <Text style={styles.qTitle}>{title}</Text>
       {children}
     </Card>
@@ -119,12 +122,12 @@ export default function SurveyScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.doneWrap}>
           <Text style={styles.doneMark}>✦</Text>
-          <Text style={styles.doneTitle}>Thank you</Text>
+          <Text style={styles.doneTitle}>{T.thanksTitle}</Text>
           <Text style={styles.doneBody}>
-            Your answers help decide what {APP_NAME} does next.
+            {fmt(T.thanksBody, { app: APP_NAME })}
           </Text>
           <TouchableOpacity style={styles.doneBtn} onPress={close} activeOpacity={0.85}>
-            <Text style={styles.doneBtnText}>Done</Text>
+            <Text style={styles.doneBtnText}>{S.common.done}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -139,57 +142,56 @@ export default function SurveyScreen() {
           <View style={styles.headRow}>
             <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
             <TouchableOpacity onPress={close} hitSlop={10}>
-              <Text style={styles.skipAll}>Not now</Text>
+              <Text style={styles.skipAll}>{T.notNow}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.title}>Five questions</Text>
+          <Text style={styles.title}>{T.title}</Text>
 
           {/* The anonymity claim has to be visible before question 5 is read,
               or question 5 gets polite answers instead of true ones. */}
           <View style={styles.anonBox}>
             <Text style={styles.anonText}>
-              <Text style={styles.anonStrong}>Your answers are anonymous. </Text>
-              They are not linked to your name or account, and no one at your church — including
-              your Father of Confession — can see them. Skip anything you'd rather not answer.
+              <Text style={styles.anonStrong}>{T.anonLead}</Text>
+              {T.anonBody}
             </Text>
           </View>
 
-          <Question n={1} title={`How often do you use ${APP_NAME}?`}>
+          <Question n={1} title={fmt(T.q1.title, { app: APP_NAME })}>
             {Q1.map(o => <Option key={o.value} label={o.label} on={a.frequency === o.value}
               onPress={() => set('frequency', o.value)} />)}
           </Question>
 
-          <Question n={2} title={`Has ${APP_NAME} helped you keep your canon more consistently?`}>
+          <Question n={2} title={fmt(T.q2.title, { app: APP_NAME })}>
             {Q2.map(o => <Option key={o.value} label={o.label} on={a.consistency === o.value}
               onPress={() => set('consistency', o.value)} />)}
           </Question>
 
-          <Question n={3} title="Which part would you miss most if it disappeared?">
+          <Question n={3} title={T.q3.title}>
             {Q3.map(o => <Option key={o.value} label={o.label} on={a.most_missed === o.value}
               onPress={() => set('most_missed', o.value)} />)}
           </Question>
 
-          <Question n={4} title="What's the one thing you'd add or change?">
+          <Question n={4} title={T.q4.title}>
             <TextInput
               style={styles.input}
               value={a.one_change ?? ''}
               onChangeText={t => setA(p => ({ ...p, one_change: t.slice(0, MAX) }))}
-              placeholder="Just the one thing that matters most to you…"
+              placeholder={T.q4.placeholder}
               placeholderTextColor={colors.faint}
               multiline
               textAlignVertical="top"
             />
           </Question>
 
-          <Question n={5} title="Is there anything you avoid putting in the app because you're not sure who can see it?">
-            <Option label="No" on={a.withholding === false} onPress={() => set('withholding', false)} />
-            <Option label="Yes" on={a.withholding === true} onPress={() => set('withholding', true)} />
+          <Question n={5} title={T.q5.title}>
+            <Option label={S.common.no} on={a.withholding === false} onPress={() => set('withholding', false)} />
+            <Option label={S.common.yes} on={a.withholding === true} onPress={() => set('withholding', true)} />
             {a.withholding === true && (
               <TextInput
                 style={[styles.input, { marginTop: 10 }]}
                 value={a.withholding_detail ?? ''}
                 onChangeText={t => setA(p => ({ ...p, withholding_detail: t.slice(0, MAX) }))}
-                placeholder="What holds you back?"
+                placeholder={T.q5.detailPlaceholder}
                 placeholderTextColor={colors.faint}
                 multiline
                 textAlignVertical="top"
@@ -205,10 +207,10 @@ export default function SurveyScreen() {
             onPress={submit}
             activeOpacity={0.85}
           >
-            <Text style={styles.sendText}>{sending ? 'Sending…' : 'Send answers'}</Text>
+            <Text style={styles.sendText}>{sending ? T.sending : T.send}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.laterBtn} onPress={close}>
-            <Text style={styles.laterText}>Ask me another time</Text>
+            <Text style={styles.laterText}>{T.later}</Text>
           </TouchableOpacity>
 
         </ScrollView>

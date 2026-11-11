@@ -15,7 +15,32 @@
 
 import RAW from './agpeyaPsalms.json';
 import PRAYERS_RAW from './agpeyaPrayers.json';
+import RAW_AR from './agpeyaPsalms.ar.json';
+import PRAYERS_RAW_AR from './agpeyaPrayers.ar.json';
 import { classify, CATEGORY_META, PRAYER_KIND_META, CategoryMeta, PrayerKind } from './psalmMeta';
+import { S, fmt, isRTL } from '@/lib/i18n';
+
+// Names and titles are shown through the dictionary (lib/i18n/*/psalms.ts),
+// keyed by the ids the JSON already uses; the JSON's own English is the
+// fallback for an id the dictionary lacks. The text of the psalms and prayers
+// is never translated here.
+//
+// In Arabic the TEXT comes from agpeyaPsalms.ar.json / agpeyaPrayers.ar.json:
+// the Arabic column of the Book of Agpeya compiled by Fr. Jacob B. Nadian (St.
+// Bishoy, Toronto), extracted by scripts/agpeya-arabic. An item missing there
+// falls back to the English, and hasArabicText() tells the screen so.
+const HOUR_NAMES: Record<string, string> = S.psalms.hours;
+const PRAYER_TITLES: Record<string, string> = S.psalms.prayerTitles;
+const WATCH_NAMES: Record<string, string> = {
+  'First Watch': S.psalms.watches.first,
+  'Second Watch': S.psalms.watches.second,
+  'Third Watch': S.psalms.watches.third,
+};
+
+// The heading of a section inside an hour ("First Watch"), as shown.
+export function sectionHeading(heading: string): string {
+  return WATCH_NAMES[heading] ?? heading;
+}
 
 export interface AgpeyaHour {
   key: string;
@@ -39,7 +64,23 @@ export const PSALM_NUMBERS: number[] = Object.keys(DATA.psalms)
   .map(n => parseInt(n, 10))
   .sort((a, b) => a - b);
 
+const AR_PSALMS = (RAW_AR as unknown as { psalms: Record<string, { parts: string[] }> }).psalms;
+const AR_PRAYERS = (PRAYERS_RAW_AR as unknown as { prayers: Record<string, { parts: string[] }> }).prayers;
+
+function arabicPsalmParts(psalm: number): string[] | null {
+  const parts = AR_PSALMS[String(psalm)]?.parts;
+  // Psalm 118 is tracked section by section ("118#3"), so its Arabic is only
+  // used when it has exactly the same sections as the English.
+  if (!parts?.length) return null;
+  if (parts.length !== (DATA.psalms[String(psalm)]?.parts.length ?? 0)) return null;
+  return parts;
+}
+
 export function getParts(psalm: number): string[] {
+  if (isRTL) {
+    const ar = arabicPsalmParts(psalm);
+    if (ar) return ar;
+  }
   return DATA.psalms[String(psalm)]?.parts ?? [];
 }
 
@@ -88,19 +129,33 @@ export function prayerItemId(prayerId: string): ItemId {
 
 export function getPrayer(id: ItemId): AgpeyaPrayer | null {
   if (!isPrayerItem(id)) return null;
-  return PRAYER_DATA.prayers[id.slice(PRAYER_ITEM_PREFIX.length)] ?? null;
+  const key = id.slice(PRAYER_ITEM_PREFIX.length);
+  const prayer = PRAYER_DATA.prayers[key];
+  if (!prayer) return null;
+  const ar = isRTL ? AR_PRAYERS[key]?.parts : undefined;
+  return ar?.length ? { ...prayer, parts: ar } : prayer;
+}
+
+// Whether an item's text is shown in Arabic (true) or falls back to English.
+export function hasArabicText(id: ItemId): boolean {
+  if (!isRTL) return false;
+  if (isPrayerItem(id)) return !!AR_PRAYERS[id.slice(PRAYER_ITEM_PREFIX.length)]?.parts.length;
+  return arabicPsalmParts(parseInt(id.split('#')[0], 10)) !== null;
 }
 
 // Memorization units: each Agpeya part is split into short, phrase-sized
 // portions so the learner takes on a small piece at a time. We break at clause
 // boundaries (commas, semicolons, colons, and sentence ends) and group up to a
 // small word target.
-const TARGET_WORDS = 11;
-const MIN_TAIL = 4;
+// Arabic attaches conjunctions, prepositions and pronouns to the word, so the
+// same phrase has about half as many words: the Arabic target is smaller.
+const TARGET_WORDS = isRTL ? 7 : 11;
+const MIN_TAIL = isRTL ? 3 : 4;
 
 function chunk(text: string): string[] {
   // Split into clauses, keeping the trailing punctuation with each clause.
-  const clauses = text.match(/[^,;:.!?]+[,;:.!?]*/g) ?? [text];
+  // Arabic punctuation («،» «؛» «؟») counts as a clause boundary too.
+  const clauses = text.match(/[^,;:.!?،؛؟]+[,;:.!?،؛؟]*/g) ?? [text];
   const units: string[] = [];
   let cur = '';
   let words = 0;
@@ -154,7 +209,8 @@ export function leadUp(psalm: number, unitIndex: number): string {
 }
 
 export function hourName(key: string): string {
-  return HOUR_LAYOUTS.find(h => h.key === key)?.name
+  return HOUR_NAMES[key]
+    ?? HOUR_LAYOUTS.find(h => h.key === key)?.name
     ?? HOURS.find(h => h.key === key)?.name
     ?? key;
 }
@@ -207,10 +263,12 @@ export function itemLeadUp(id: ItemId, unitIndex: number): string {
 
 export function itemLabel(id: ItemId): string {
   const prayer = getPrayer(id);
-  if (prayer) return prayer.title;
+  if (prayer) return PRAYER_TITLES[id.slice(PRAYER_ITEM_PREFIX.length)] ?? prayer.title;
   const psalm = itemPsalm(id);
   const sec = itemSection(id);
-  return sec == null ? `Psalm ${psalm}` : `Psalm ${psalm} · Section ${sec + 1}`;
+  return sec == null
+    ? fmt(S.psalms.psalmN, { n: psalm })
+    : fmt(S.psalms.psalmSection, { n: psalm, section: sec + 1 });
 }
 
 // Full readable text of an item (whole-psalm sections, one 118 section, or a

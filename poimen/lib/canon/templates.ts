@@ -14,6 +14,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as db from '@/lib/db';
 import { AssignedCategory } from './assigned';
+import { S, plural } from '@/lib/i18n';
+
+const T = S.canon.templates;
 
 const DEMO_KEY = 'poimen.demo.canonTemplates';
 
@@ -60,7 +63,7 @@ function coerceBody(raw: any): CanonTemplateBody {
 
 const coerce = (r: any): CanonTemplate => ({
   id: String(r?.id ?? ''),
-  name: String(r?.name ?? 'Untitled'),
+  name: String(r?.name ?? T.untitled),
   body: coerceBody(r?.body),
   createdAt: String(r?.created_at ?? r?.createdAt ?? ''),
 });
@@ -91,9 +94,9 @@ export async function saveTemplate(
   priestId: string, demoMode: boolean, name: string, body: CanonTemplateBody,
 ): Promise<{ error: string | null }> {
   const clean = name.trim();
-  if (!clean) return { error: 'Give the template a name.' };
+  if (!clean) return { error: T.nameRequired };
   if (!body.parts.length && !body.custom.length) {
-    return { error: 'Turn on at least one part of the canon first.' };
+    return { error: T.emptyBody };
   }
   if (demoMode) {
     const list = await loadDemo();
@@ -118,7 +121,7 @@ export async function renameTemplate(
   id: string, demoMode: boolean, name: string,
 ): Promise<{ error: string | null }> {
   const clean = name.trim();
-  if (!clean) return { error: 'Give the template a name.' };
+  if (!clean) return { error: T.nameRequired };
   if (demoMode) {
     const list = await loadDemo();
     await saveDemo(list.map(t => (t.id === id ? { ...t, name: clean } : t)));
@@ -140,7 +143,7 @@ export async function deleteTemplate(id: string, demoMode: boolean): Promise<{ e
 export function describeTemplate(t: CanonTemplate): string {
   const bits = t.body.parts.map(p => p.component).filter(Boolean);
   if (t.body.custom.length) {
-    bits.push(`${t.body.custom.length} custom component${t.body.custom.length === 1 ? '' : 's'}`);
+    bits.push(plural(T.customComponents, t.body.custom.length));
   }
-  return bits.length ? bits.join(' · ') : 'Empty template';
+  return bits.length ? bits.join(' · ') : T.empty;
 }

@@ -6,31 +6,37 @@ import { goBack } from '@/lib/nav';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { APP_NAME_UPPER } from '@/lib/brand';
 import { useSession } from '@/lib/auth';
+import { S, GLYPH } from '@/lib/i18n';
+
+const T = S.shell.portals;
 
 const PORTALS = lazyThemed(() => [
   {
+    key: 'congregant',
     icon: '◉',
-    title: 'Congregant',
-    subtitle: 'Your personal view',
-    desc: 'Dashboard · Confession prep · Spiritual canon · Journal · Prayer requests',
+    title: S.common.roleCongregant,
+    subtitle: T.congregantSubtitle,
+    desc: T.congregantDesc,
     route: '/(tabs)',
     accentColor: colors.gold,
     accentBg: colors.goldDim,
   },
   {
+    key: 'priest',
     icon: '✝︎',
-    title: 'Priest',
-    subtitle: 'Father of Confession portal',
-    desc: 'Member roster · Pastoral encounter log · Canon assignment · Pastoral notes',
+    title: S.common.rolePriest,
+    subtitle: T.priestSubtitle,
+    desc: T.priestDesc,
     route: '/(priest)',
     accentColor: colors.blue,
     accentBg: colors.blueBg,
   },
   {
+    key: 'servant',
     icon: '◇',
-    title: 'Servant',
-    subtitle: 'Sunday school servant portal',
-    desc: 'Student roster · Student detail · Assign prayer & scripture canons',
+    title: S.common.roleServant,
+    subtitle: T.servantSubtitle,
+    desc: T.servantDesc,
     route: '/(servant)',
     accentColor: colors.green,
     accentBg: colors.greenBg,
@@ -46,24 +52,24 @@ export default function PortalsScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
         <TouchableOpacity style={styles.backBtn} onPress={() => goBack('/(tabs)')}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>{GLYPH.arrowBack} {S.common.back}</Text>
         </TouchableOpacity>
 
         <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
-        <Text style={styles.title}>Portals</Text>
-        <Text style={styles.subtitle}>All three views of the pastoral care system.</Text>
+        <Text style={styles.title}>{T.title}</Text>
+        <Text style={styles.subtitle}>{T.subtitle}</Text>
 
         <View style={styles.divider} />
 
         {PORTALS.map((portal) => {
           const isYours =
-            (portal.title === 'Congregant' && (!profile?.role || profile.role === 'congregant')) ||
-            (portal.title === 'Priest' && (profile?.role === 'priest' || profile?.role === 'admin')) ||
-            (portal.title === 'Servant' && profile?.role === 'servant');
+            (portal.key === 'congregant' && (!profile?.role || profile.role === 'congregant')) ||
+            (portal.key === 'priest' && (profile?.role === 'priest' || profile?.role === 'admin')) ||
+            (portal.key === 'servant' && profile?.role === 'servant');
 
           return (
             <TouchableOpacity
-              key={portal.title}
+              key={portal.key}
               style={styles.card}
               onPress={() => router.push(portal.route as any)}
               activeOpacity={0.75}
@@ -76,14 +82,14 @@ export default function PortalsScreen() {
                   <Text style={styles.cardTitle}>{portal.title}</Text>
                   {isYours && (
                     <View style={[styles.yoursBadge, { backgroundColor: portal.accentBg, borderColor: portal.accentColor }]}>
-                      <Text style={[styles.yoursText, { color: portal.accentColor }]}>YOUR ROLE</Text>
+                      <Text style={[styles.yoursText, { color: portal.accentColor }]}>{T.yourRole}</Text>
                     </View>
                   )}
                 </View>
                 <Text style={styles.cardSub}>{portal.subtitle}</Text>
                 <Text style={styles.cardDesc}>{portal.desc}</Text>
               </View>
-              <Text style={[styles.chevron, { color: portal.accentColor }]}>›</Text>
+              <Text style={[styles.chevron, { color: portal.accentColor }]}>{GLYPH.forward}</Text>
             </TouchableOpacity>
           );
         })}
@@ -100,11 +106,11 @@ export default function PortalsScreen() {
                 <Text style={[styles.iconText, { color: colors.red }]}>⊕</Text>
               </View>
               <View style={styles.cardBody}>
-                <Text style={styles.cardTitle}>Admin Overview</Text>
-                <Text style={styles.cardSub}>All users by role</Text>
-                <Text style={styles.cardDesc}>View all congregants, priests, and servants registered in the system.</Text>
+                <Text style={styles.cardTitle}>{T.adminTitle}</Text>
+                <Text style={styles.cardSub}>{T.adminSubtitle}</Text>
+                <Text style={styles.cardDesc}>{T.adminDesc}</Text>
               </View>
-              <Text style={[styles.chevron, { color: colors.red }]}>›</Text>
+              <Text style={[styles.chevron, { color: colors.red }]}>{GLYPH.forward}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -114,7 +120,7 @@ export default function PortalsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = lazyThemed(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.navy },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
@@ -151,4 +157,4 @@ const styles = StyleSheet.create({
 
   yoursBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   yoursText: { fontFamily: fonts.latoBold, fontSize: 8, letterSpacing: 1 },
-});
+}));

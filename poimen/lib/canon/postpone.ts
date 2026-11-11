@@ -9,6 +9,7 @@
 // Per-user-scoped storage (see lib/storage.ts) — keeps one account's spiritual
 // data from bleeding into another's on a shared device.
 import { userStorage as AsyncStorage } from '@/lib/storage';
+import { S } from '@/lib/i18n';
 
 const KEY = 'poimen.canon.postponed';
 const DONE_KEY = 'poimen.canon.serviceDone';
@@ -20,8 +21,8 @@ export interface PostponeOption { label: string; weeks?: number; months?: number
 // the off-week; monthly and longer can slip to next month.
 export function postponeOptionsFor(freq: string): PostponeOption[] {
   if (freq === 'Weekly') return [];
-  if (freq === 'Every 2 weeks') return [{ label: 'Next week', weeks: 1 }];
-  return [{ label: 'Next month', months: 1 }];
+  if (freq === 'Every 2 weeks') return [{ label: S.canon.postpone.nextWeek, weeks: 1 }];
+  return [{ label: S.canon.postpone.nextMonth, months: 1 }];
 }
 
 // Local (not UTC) YYYY-MM-DD — comparisons are plain string compares.

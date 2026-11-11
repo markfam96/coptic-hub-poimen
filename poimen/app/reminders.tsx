@@ -33,6 +33,9 @@ import { registerForPush, unregisterPush } from '@/lib/push/register';
 import * as db from '@/lib/db';
 import type { PushCategory, PushPrefs } from '@/lib/db/push';
 import { DEFAULT_PUSH_PREFS } from '@/lib/db/push';
+import { S, fmt, plural, GLYPH } from '@/lib/i18n';
+
+const T = S.reminders;
 
 // Quarter-hour options, the same granularity and the same picker the priest's
 // availability windows use (app/(priest)/schedule.tsx). A reminder time is the
@@ -49,28 +52,28 @@ const minutesOf = (label: string) => TIME_VALUES[TIME_LABELS.indexOf(label)] ?? 
 // Appointments and assignments default on — being told the thing you asked for
 // was confirmed is the service you requested. The other two default off.
 const PUSH_COPY: { key: PushCategory; title: string; hint: string }[] = [
-  { key: 'appointments', title: 'Appointments',
-    hint: 'When your father confirms, declines or cancels a time you asked for. Without this you find out by opening the app and noticing.' },
-  { key: 'assignments',  title: 'Something assigned to you',
-    hint: 'When your Father of Confession assigns part of your canon, or your servant assigns psalms.' },
-  { key: 'canon_nudge',  title: 'A nudge about your canon',
-    hint: 'Only when this phone has already told the server the day is unfinished. If you have been away, nothing is sent — the server would be guessing.' },
-  { key: 'reengagement', title: 'If you have been away a while',
-    hint: 'One message after a long absence. Never more than one.' },
+  { key: 'appointments', title: T.push.appointments.title,
+    hint: T.push.appointments.hint },
+  { key: 'assignments',  title: T.push.assignments.title,
+    hint: T.push.assignments.hint },
+  { key: 'canon_nudge',  title: T.push.canonNudge.title,
+    hint: T.push.canonNudge.hint },
+  { key: 'reengagement', title: T.push.reengagement.title,
+    hint: T.push.reengagement.hint },
 ];
 
 const COPY: Record<ReminderKind, { title: string; icon: string; on: string; off: string }> = {
   canon: {
-    title: 'Your canon',
+    title: T.canon.title,
     icon: '✝︎',
-    on:  'Names what your rule actually asks of you that day — the hours, the services, anything your father has assigned. Nothing arrives on a day your rule is empty, or after you have finished it.',
-    off: 'A reminder each day your rule has something standing in it.',
+    on:  T.canon.on,
+    off: T.canon.off,
   },
   psalms: {
-    title: 'Psalm memorization',
+    title: T.psalms.title,
     icon: '✦',
-    on:  'Arrives only when portions are actually due for review, and leads with your streak when there is one to keep. A day with nothing due stays quiet.',
-    off: 'A reminder on the days your review queue has something in it.',
+    on:  T.psalms.on,
+    off: T.psalms.off,
   },
 };
 
@@ -188,11 +191,10 @@ export default function RemindersScreen() {
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
           <BackRow />
           <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
-          <Text style={styles.title}>Reminders</Text>
-          <Card title="Not available here" titleIcon="✦">
+          <Text style={styles.title}>{T.title}</Text>
+          <Card title={T.unsupported.title} titleIcon="✦">
             <Text style={styles.body}>
-              Reminders are sent by your phone, so they work in the {APP_NAME} app on iPhone and
-              Android — not in the browser. Everything else on this screen works the same in both.
+              {fmt(T.unsupported.body, { app: APP_NAME })}
             </Text>
           </Card>
         </ScrollView>
@@ -216,17 +218,17 @@ export default function RemindersScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <BackRow />
         <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
-        <Text style={styles.title}>Reminders</Text>
-        <Text style={styles.subtitle}>Set by you, kept on this phone</Text>
+        <Text style={styles.title}>{T.title}</Text>
+        <Text style={styles.subtitle}>{T.subtitle}</Text>
 
         {blocked && (
           <View style={styles.blockedBox}>
             <Text style={styles.blockedText}>
-              <Text style={styles.strong}>Notifications are turned off for {APP_NAME}. </Text>
-              Turn them back on in your phone's Settings, then come back here.
+              <Text style={styles.strong}>{fmt(T.blocked.strong, { app: APP_NAME })}</Text>
+              {T.blocked.rest}
             </Text>
             <TouchableOpacity onPress={() => { H.tap(); Linking.openSettings(); }}>
-              <Text style={styles.blockedLink}>Open Settings →</Text>
+              <Text style={styles.blockedLink}>{T.blocked.openSettings}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -237,7 +239,7 @@ export default function RemindersScreen() {
           return (
             <Card key={kind} title={copy.title} titleIcon={copy.icon}>
               <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Remind me</Text>
+                <Text style={styles.toggleLabel}>{T.remindMe}</Text>
                 <Switch
                   value={s.enabled}
                   onValueChange={v => toggle(kind, v)}
@@ -249,7 +251,7 @@ export default function RemindersScreen() {
 
               {s.enabled && (
                 <View style={styles.timeRow}>
-                  <Text style={styles.timeCaption}>Every day at</Text>
+                  <Text style={styles.timeCaption}>{T.everyDayAt}</Text>
                   <ScrollPicker
                     options={TIME_LABELS}
                     value={labelFor(s.hour, s.minute)}
@@ -266,19 +268,17 @@ export default function RemindersScreen() {
         {/* Sent by Nepsis rather than written by this phone. Kept visually
             separate from the two cards above because the distinction is the
             whole point of the section. */}
-        <Text style={styles.groupLabel}>SENT TO YOU</Text>
-        <Card title="From Nepsis" titleIcon="✉">
+        <Text style={styles.groupLabel}>{T.push.groupLabel}</Text>
+        <Card title={T.push.title} titleIcon="✉">
           <Text style={styles.hint}>
-            These come from {APP_NAME} rather than from this phone, because they are about things
-            your phone has no way of knowing — a time your father confirmed while the app was
-            closed. Turning the first one on asks for permission and registers this device.
+            {fmt(T.push.intro, { app: APP_NAME })}
           </Text>
           {push === null ? (
             <ActivityIndicator color={colors.gold} style={{ marginTop: 16 }} />
           ) : (
             PUSH_COPY.map(c => (
               <View key={c.key} style={styles.pushRow}>
-                <View style={{ flex: 1, paddingRight: 14 }}>
+                <View style={styles.pushCopy}>
                   <Text style={styles.toggleLabel}>{c.title}</Text>
                   <Text style={styles.pushHint}>{c.hint}</Text>
                 </View>
@@ -296,31 +296,25 @@ export default function RemindersScreen() {
 
         {/* The honest description of the mechanism, in the place someone would
             think to ask. */}
-        <Card title="What a reminder knows" titleIcon="🔒">
+        <Card title={T.knows.title} titleIcon="🔒">
           <Text style={styles.body}>
-            The two reminders above are written by this phone, not sent to it. Your rule, your
-            review queue and your streak are read from this device to write them, and none of
-            that leaves it.
+            {T.knows.local}
           </Text>
           <Text style={styles.bodySmall}>
-            What {APP_NAME} is sent, so that the messages under “From Nepsis” can reach you: a code
-            identifying this device, your time zone and the hour you chose, and — only if you turn
-            on the canon nudge — how many things your rule asked of you each day and how many you
-            marked done. Counts only, never which ones.
+            {fmt(T.knows.sent, { app: APP_NAME })}
           </Text>
           <Text style={styles.bodySmall}>
-            Your Father of Confession, your servant and your church see none of it, and cannot see
-            whether reminders are on or whether you acted on one.
+            {T.knows.unseen}
           </Text>
           {anyOn && pending !== null && (
             <View style={styles.statusBox}>
               <Text style={styles.statusText}>
                 {pending === 0
-                  ? 'Nothing scheduled right now — there is nothing due in the next two weeks.'
-                  : `${pending} ${pending === 1 ? 'reminder' : 'reminders'} scheduled over the next two weeks.`}
+                  ? T.knows.statusNone
+                  : plural(T.knows.statusScheduled, pending)}
               </Text>
               <Text style={styles.statusSub}>
-                Days with nothing due are skipped. The schedule is refreshed each time you open {APP_NAME}.
+                {fmt(T.knows.statusSub, { app: APP_NAME })}
               </Text>
             </View>
           )}
@@ -334,8 +328,8 @@ export default function RemindersScreen() {
 function BackRow() {
   return (
     <TouchableOpacity style={styles.backRow} onPress={() => goBack('/profile')}>
-      <Text style={styles.backArrow}>‹</Text>
-      <Text style={styles.backText}>Back</Text>
+      <Text style={styles.backArrow}>{GLYPH.back}</Text>
+      <Text style={styles.backText}>{S.common.back}</Text>
     </TouchableOpacity>
   );
 }
@@ -381,6 +375,7 @@ const styles = lazyThemed(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border,
   },
+  pushCopy: { flex: 1, paddingRight: 14 },
   pushHint: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, lineHeight: 17, marginTop: 3 },
 
   body: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.textSecond, lineHeight: 21 },

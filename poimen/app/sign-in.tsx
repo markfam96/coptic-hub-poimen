@@ -13,13 +13,18 @@ import { PRIVACY_COPY } from '@/lib/privacy-copy';
 import { useChurchList } from '@/lib/church-list';
 import { ChurchField, ChurchPicker } from '@/components/ChurchPicker';
 import { type ChurchChoice, churchChoiceToFields } from '@/lib/church-choice';
+import { S } from '@/lib/i18n';
+import { LanguageSwitch } from '@/components/ui/LanguageSwitch';
 
 type Mode = 'signin' | 'signup' | 'magic' | 'reset';
 
+const T = S.auth.signIn;
+
+// `key` is what is sent to the server; only label and desc are translated.
 const SIGNUP_ROLES: { key: SignupRole; label: string; desc: string }[] = [
-  { key: 'congregant', label: 'Congregant', desc: 'My spiritual life' },
-  { key: 'servant',    label: 'Servant',    desc: 'Sunday school service' },
-  { key: 'priest',     label: 'Priest',     desc: 'Father of Confession' },
+  { key: 'congregant', label: S.common.roleCongregant, desc: T.roleCongregantDesc },
+  { key: 'servant',    label: S.common.roleServant,    desc: T.roleServantDesc },
+  { key: 'priest',     label: S.common.rolePriest,     desc: T.rolePriestDesc },
 ];
 
 export default function SignInScreen() {
@@ -61,48 +66,52 @@ export default function SignInScreen() {
       // Required, but never blocked by the list: the unlisted path inside the
       // picker works while the list is loading or after it failed.
       if (!church) {
-        setError('Choose your church — or tap "My church isn\'t listed" and type its name.');
+        setError(T.churchRequired);
         setLoading(false);
         return;
       }
       const { error } = await signUpWithEmail(email.trim(), password, fullName.trim(), signupRole, churchChoiceToFields(church));
       if (error) setError(error);
-      else setInfo('Check your email to confirm your account, then sign in.');
+      else setInfo(T.infoConfirmEmail);
     } else if (mode === 'magic') {
       const { error } = await signInWithMagicLink(email.trim());
       if (error) setError(error);
-      else setInfo('A sign-in link was sent to your email.');
+      else setInfo(T.infoMagicSent);
     } else {
       const { error } = await resetPassword(email.trim());
       if (error) setError(error);
-      else setInfo('A password reset link was sent to your email.');
+      else setInfo(T.infoResetSent);
     }
     setLoading(false);
   }
 
-  const btnLabel = mode === 'signin' ? 'SIGN IN'
-    : mode === 'signup' ? 'CREATE ACCOUNT'
-    : mode === 'magic' ? 'SEND LINK'
-    : 'SEND RESET LINK';
+  const btnLabel = mode === 'signin' ? T.submitSignIn
+    : mode === 'signup' ? T.submitSignUp
+    : mode === 'magic' ? T.submitMagic
+    : T.submitReset;
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
+          {/* Language: before the brand, so it is the first thing found by
+              someone who cannot read the language the form is in. */}
+          <LanguageSwitch compact style={styles.language} />
+
           {/* Brand */}
           <View style={styles.brand}>
             <Text style={styles.brandCross}>✝︎</Text>
-            <Text style={styles.brandTitle}>Nepsis</Text>
-            <Text style={styles.brandSub}>Pastoral care, rooted in Tradition</Text>
+            <Text style={styles.brandTitle}>{S.common.appName}</Text>
+            <Text style={styles.brandSub}>{S.common.tagline}</Text>
           </View>
 
           {/* Mode heading */}
           <Text style={styles.modeHeading}>
-            {mode === 'signin' ? 'Sign in to your account'
-              : mode === 'signup' ? 'Create an account'
-              : mode === 'magic' ? 'Sign in with a link'
-              : 'Reset your password'}
+            {mode === 'signin' ? T.headingSignIn
+              : mode === 'signup' ? T.headingSignUp
+              : mode === 'magic' ? T.headingMagic
+              : T.headingReset}
           </Text>
 
           {/* Form */}
@@ -122,11 +131,7 @@ export default function SignInScreen() {
                   ))}
                 </View>
                 {signupRole === 'priest' && (
-                  <Text style={styles.roleNote}>
-                    You will not see anyone's spiritual life until they choose you. A member
-                    enters your invite code and confirms the link before you can see their
-                    canon, confession dates, or notes — and they can unlink at any time.
-                  </Text>
+                  <Text style={styles.roleNote}>{T.priestNote}</Text>
                 )}
               </>
             )}
@@ -136,7 +141,7 @@ export default function SignInScreen() {
             {mode === 'signup' && (
               <TextInput
                 style={styles.input}
-                placeholder="Full name"
+                placeholder={T.fullName}
                 placeholderTextColor={colors.faint}
                 value={fullName}
                 onChangeText={setFullName}
@@ -159,7 +164,7 @@ export default function SignInScreen() {
 
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder={T.email}
               placeholderTextColor={colors.faint}
               value={email}
               onChangeText={setEmail}
@@ -172,7 +177,7 @@ export default function SignInScreen() {
               <View style={styles.passwordRow}>
                 <TextInput
                   style={styles.passwordInput}
-                  placeholder="Password"
+                  placeholder={T.password}
                   placeholderTextColor={colors.faint}
                   value={password}
                   onChangeText={setPassword}
@@ -182,6 +187,8 @@ export default function SignInScreen() {
                   style={styles.passwordToggle}
                   onPress={() => setShowPassword(s => !s)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? T.hidePassword : T.showPassword}
                 >
                   {showPassword
                     ? <EyeIcon size={18} color={colors.muted} />
@@ -192,7 +199,7 @@ export default function SignInScreen() {
 
             {mode === 'signin' && (
               <TouchableOpacity onPress={() => switchMode('reset')} style={styles.forgotBtn}>
-                <Text style={styles.link}>Forgot password?</Text>
+                <Text style={styles.link}>{T.forgotPassword}</Text>
               </TouchableOpacity>
             )}
 
@@ -216,34 +223,32 @@ export default function SignInScreen() {
             {mode === 'signin' && (
               <>
                 <TouchableOpacity onPress={() => switchMode('magic')}>
-                  <Text style={styles.link}>Use a magic link instead</Text>
+                  <Text style={styles.link}>{T.useMagicLink}</Text>
                 </TouchableOpacity>
                 <Text style={styles.linkSep}>·</Text>
                 <TouchableOpacity onPress={() => switchMode('signup')}>
-                  <Text style={styles.link}>Create an account</Text>
+                  <Text style={styles.link}>{T.createAccount}</Text>
                 </TouchableOpacity>
               </>
             )}
             {mode === 'signup' && (
               <TouchableOpacity onPress={() => switchMode('signin')}>
-                <Text style={styles.link}>Already have an account? Sign in</Text>
+                <Text style={styles.link}>{T.haveAccount}</Text>
               </TouchableOpacity>
             )}
             {mode === 'magic' && (
               <TouchableOpacity onPress={() => switchMode('signin')}>
-                <Text style={styles.link}>Back to password sign in</Text>
+                <Text style={styles.link}>{T.backToPassword}</Text>
               </TouchableOpacity>
             )}
             {mode === 'reset' && (
               <TouchableOpacity onPress={() => switchMode('signin')}>
-                <Text style={styles.link}>Back to sign in</Text>
+                <Text style={styles.link}>{T.backToSignIn}</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          <Text style={styles.footer}>
-            A ministry of the Coptic Orthodox Church.{'\n'}All spiritual data is private and protected.
-          </Text>
+          <Text style={styles.footer}>{T.footer}</Text>
 
         </ScrollView>
         {mode === 'signup' && (
@@ -266,6 +271,7 @@ export default function SignInScreen() {
 const styles = lazyThemed(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.navy },
   content: { padding: 28, paddingTop: 52, flexGrow: 1 },
+  language: { alignSelf: 'center', marginBottom: 28 },
 
   brand: { alignItems: 'center', marginBottom: 40 },
   brandCross: { fontSize: 30, color: colors.gold, marginBottom: 32, opacity: 0.8 },

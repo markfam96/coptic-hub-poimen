@@ -14,24 +14,38 @@ import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
 import {
   JournalEntry, getJournalEntries, saveJournalEntries, JournalUnavailableError,
   Blessing, getBlessings, saveBlessings, migrateBlessingFlags,
+  UNTITLED,
 } from '@/lib/journal';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
+import { S, fmt, fmtDate as fmtLocalDate, GLYPH, isRTL, ltrText } from '@/lib/i18n';
+
+const T = S.journal;
+
+// What an entry saved without a title is stored as. Kept in English in every
+// language (lib/journal.ts compares against it); entryTitleText shows it
+// translated.
+const entryTitleText = (entry: JournalEntry) => (entry.title === UNTITLED ? T.untitled : entry.title);
+
+// Scripture typed or quoted in Latin script reads left-to-right even while
+// the app is in Arabic; a verse the member typed in Arabic keeps its own
+// direction.
+const scriptureDirection = (text: string) => (/[\u0600-\u06FF]/.test(text) ? null : ltrText);
 
 // Spiritual practices/disciplines were removed from this tab — daily practices
 // live on the Canon tab (assigned canon + personal rule). This tab is now
 // purely the written journal: today's entry, past entries, and the prompt.
 
 const DEMO_ENTRIES: JournalEntry[] = [
-  { id: 'e1', created_at: '2026-06-04', title: 'Reflection on the fast', reflection: 'Felt a deepening sense of gratitude during the Agpeya today. The third hour prayer felt different — more present.', scripture: 'Psalm 62:1 — O God, my God, I rise early to be with You', prayer_intention: 'That this stillness would carry into the workday.' },
-  { id: 'e2', created_at: '2026-05-30', title: 'Gratitude', reflection: 'Reflecting on God\'s faithfulness with the baby\'s health. Psalm 116 kept coming to mind.', scripture: 'Psalm 116:7 — Return to your rest, O my soul' },
-  { id: 'e3', created_at: '2026-05-22', title: 'After confession', reflection: 'Feeling lighter. Beginning the 40-day Psalm plan. Starting with Psalm 50.' },
+  { id: 'e1', created_at: '2026-06-04', title: T.demo.fastTitle, reflection: T.demo.fastReflection, scripture: 'Psalm 62:1 — O God, my God, I rise early to be with You', prayer_intention: T.demo.fastIntention },
+  { id: 'e2', created_at: '2026-05-30', title: T.demo.gratitudeTitle, reflection: T.demo.gratitudeReflection, scripture: 'Psalm 116:7 — Return to your rest, O my soul' },
+  { id: 'e3', created_at: '2026-05-22', title: T.demo.confessionTitle, reflection: T.demo.confessionReflection },
 ];
 
 const DEMO_BLESSINGS: Blessing[] = [
-  { id: 'b1', created_at: '2026-06-02', text: 'The baby slept through the night for the first time — and so did we.' },
-  { id: 'b2', created_at: '2026-05-18', text: 'Abouna called just to check in, the day I most needed it.' },
-  { id: 'b3', created_at: '2026-04-27', text: 'The job offer came through after months of waiting. Glory to God.' },
+  { id: 'b1', created_at: '2026-06-02', text: T.demo.blessingSleep },
+  { id: 'b2', created_at: '2026-05-18', text: T.demo.blessingCall },
+  { id: 'b3', created_at: '2026-04-27', text: T.demo.blessingJob },
 ];
 
 // Kept short on the page; the full list unfolds on request.
@@ -42,7 +56,7 @@ function fmtDate(iso: string, long = false): string {
   // the previous day locally — anchor them to local noon so the calendar day
   // survives any timezone. Full ISO timestamps parse as-is.
   const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T12:00:00') : new Date(iso);
-  return d.toLocaleDateString('en-US', long
+  return fmtLocalDate(d, long
     ? { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }
     : { month: 'long', day: 'numeric', year: 'numeric' });
 }
@@ -55,13 +69,13 @@ function EntryRow({ entry, onPress }: {
     <TouchableOpacity style={styles.entryItem} onPress={onPress} activeOpacity={0.7}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.entryDate}>{fmtDate(entry.created_at)}</Text>
-        <Text style={styles.entryTitle}>{entry.title}</Text>
+        <Text style={styles.entryTitle}>{entryTitleText(entry)}</Text>
         <Text style={styles.entryPreview} numberOfLines={2}>{entry.reflection}</Text>
         {entry.flaggedForConfession && (
-          <Text style={styles.entryFlagBadge}>📌 For your next confession</Text>
+          <Text style={styles.entryFlagBadge}>{T.past.flagBadge}</Text>
         )}
       </View>
-      <Text style={styles.entryChevron}>›</Text>
+      <Text style={styles.entryChevron}>{GLYPH.forward}</Text>
     </TouchableOpacity>
   );
 }
@@ -146,7 +160,7 @@ export default function JournalScreen() {
   }
 
   function deleteBlessing(id: string) {
-    confirmDestructive('Remove blessing', 'Remove this from your blessings?', 'Remove', () => {
+    confirmDestructive(T.blessings.removeTitle, T.blessings.removeBody, S.common.remove, () => {
       const updated = blessings.filter(b => b.id !== id);
       setBlessings(updated);
       persistBlessings(updated);
@@ -164,7 +178,7 @@ export default function JournalScreen() {
     const entry: JournalEntry = {
       id: Date.now().toString(),
       created_at: new Date().toISOString(),
-      title: entryTitle.trim() || 'Untitled',
+      title: entryTitle.trim() || UNTITLED,
       reflection: reflection.trim(),
       scripture: scripture.trim(),
       prayer_intention: prayerIntention.trim(),
@@ -178,7 +192,7 @@ export default function JournalScreen() {
   }
 
   function deleteEntry(id: string) {
-    confirmDestructive('Delete Entry', 'Delete this journal entry?', 'Delete', () => {
+    confirmDestructive(T.detail.deleteTitle, T.detail.deleteBody, S.common.delete, () => {
       const updated = entries.filter(e => e.id !== id);
       setEntries(updated);
       saveEntries(updated);
@@ -193,7 +207,7 @@ export default function JournalScreen() {
     setViewEntry(v => v && v.id === id ? updated.find(e => e.id === id) ?? v : v);
   }
 
-  const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const todayStr = fmtLocalDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric' });
 
   // ── Entry detail ───────────────────────────────────────────
   if (viewEntry) {
@@ -201,15 +215,15 @@ export default function JournalScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.detailHeader}>
           <TouchableOpacity onPress={() => setViewEntry(null)} hitSlop={10}>
-            <Text style={styles.detailBack}>‹ Journal</Text>
+            <Text style={styles.detailBack}>{GLYPH.back} {T.detail.back}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => deleteEntry(viewEntry.id)} hitSlop={10}>
-            <Text style={styles.detailDelete}>Delete</Text>
+            <Text style={styles.detailDelete}>{S.common.delete}</Text>
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
           <Text style={styles.detailDate}>{fmtDate(viewEntry.created_at, true)}</Text>
-          <Text style={styles.detailTitle}>{viewEntry.title}</Text>
+          <Text style={styles.detailTitle}>{entryTitleText(viewEntry)}</Text>
 
           <TouchableOpacity
             style={[styles.confessionFlagChip, viewEntry.flaggedForConfession && styles.confessionFlagChipActive]}
@@ -217,25 +231,25 @@ export default function JournalScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.confessionFlagChipText, viewEntry.flaggedForConfession && styles.confessionFlagChipTextActive]}>
-              {viewEntry.flaggedForConfession ? '📌  Flagged for your next confession — tap to remove' : '📌  Bring this up with Abouna at my next confession'}
+              {viewEntry.flaggedForConfession ? T.detail.flagged : T.detail.flag}
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.detailLabel}>REFLECTION</Text>
+          <Text style={styles.detailLabel}>{T.labels.reflection}</Text>
           <Text style={styles.detailBody}>{viewEntry.reflection}</Text>
 
           {!!viewEntry.scripture && (
             <>
-              <Text style={styles.detailLabel}>SCRIPTURE THAT SPOKE TO ME</Text>
+              <Text style={styles.detailLabel}>{T.labels.scripture}</Text>
               <View style={styles.detailScriptureCard}>
-                <Text style={styles.detailScripture}>{viewEntry.scripture}</Text>
+                <Text style={[styles.detailScripture, scriptureDirection(viewEntry.scripture)]}>{viewEntry.scripture}</Text>
               </View>
             </>
           )}
 
           {!!viewEntry.prayer_intention && (
             <>
-              <Text style={styles.detailLabel}>PRAYER INTENTION</Text>
+              <Text style={styles.detailLabel}>{T.labels.prayerIntention}</Text>
               <Text style={styles.detailBody}>{viewEntry.prayer_intention}</Text>
             </>
           )}
@@ -251,38 +265,38 @@ export default function JournalScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>Spiritual Journal</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
-        <Text style={styles.pageSubtitle}>Reflections, prompts, and growth</Text>
+        <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
         {unavailable && (
-          <Card title={unavailable === 'locked' ? 'Your journal is locked' : "Couldn't load your journal"} titleIcon="🔒">
+          <Card title={unavailable === 'locked' ? T.unavailable.lockedTitle : T.unavailable.offlineTitle} titleIcon="🔒">
             <Text style={styles.emptyBody}>
               {unavailable === 'locked'
-                ? 'Your journal is encrypted with your key, which is not on this device yet. Restore it with your Recovery PIN to open your entries. Saving is paused so nothing replaces them.'
-                : 'Check your connection and try again. Saving is paused so nothing replaces your entries.'}
+                ? T.unavailable.lockedBody
+                : T.unavailable.offlineBody}
             </Text>
             <TouchableOpacity style={[styles.btnGoldFull, { marginTop: 12 }]} onPress={load}>
-              <Text style={styles.btnGoldFullText}>TRY AGAIN</Text>
+              <Text style={styles.btnGoldFullText}>{T.unavailable.tryAgain}</Text>
             </TouchableOpacity>
           </Card>
         )}
         {saveError && !unavailable && (
           <Text style={[styles.emptyBody, { color: colors.red, marginBottom: 8 }]}>
-            Your last change couldn't be saved. Check your connection — it is still on this screen.
+            {T.unavailable.saveError}
           </Text>
         )}
 
         {/* Today's Entry */}
-        <Card title="Today's Entry" titleIcon="✦" action={<Text style={styles.dateLabel}>{todayStr}</Text>}>
-          <Text style={styles.formLabel}>TITLE (optional)</Text>
-          <TextInput style={styles.input} placeholder="e.g. Reflection on the fast" placeholderTextColor={colors.faint} value={entryTitle} onChangeText={setEntryTitle} />
-          <Text style={[styles.formLabel, { marginTop: 14 }]}>REFLECTION</Text>
-          <TextInput style={[styles.textarea, { minHeight: 110 }]} multiline placeholder="What is God saying to you today? What are you grateful for? What are you struggling with?" placeholderTextColor={colors.faint} value={reflection} onChangeText={setReflection} />
-          <Text style={[styles.formLabel, { marginTop: 14 }]}>SCRIPTURE THAT SPOKE TO ME</Text>
-          <TextInput style={styles.input} placeholder="e.g. Psalm 63:1 — O God, You are my God..." placeholderTextColor={colors.faint} value={scripture} onChangeText={setScripture} />
-          <Text style={[styles.formLabel, { marginTop: 14 }]}>PRAYER INTENTION</Text>
-          <TextInput style={[styles.textarea, { minHeight: 56 }]} multiline placeholder="What are you bringing to God in prayer today?" placeholderTextColor={colors.faint} value={prayerIntention} onChangeText={setPrayerIntention} />
+        <Card title={T.today.title} titleIcon="✦" action={<Text style={styles.dateLabel}>{todayStr}</Text>}>
+          <Text style={styles.formLabel}>{T.labels.titleOptional}</Text>
+          <TextInput style={styles.input} placeholder={T.today.titlePlaceholder} placeholderTextColor={colors.faint} value={entryTitle} onChangeText={setEntryTitle} />
+          <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.labels.reflection}</Text>
+          <TextInput style={[styles.textarea, { minHeight: 110 }]} multiline placeholder={T.today.reflectionPlaceholder} placeholderTextColor={colors.faint} value={reflection} onChangeText={setReflection} />
+          <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.labels.scripture}</Text>
+          <TextInput style={styles.input} placeholder={T.today.scripturePlaceholder} placeholderTextColor={colors.faint} value={scripture} onChangeText={setScripture} />
+          <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.labels.prayerIntention}</Text>
+          <TextInput style={[styles.textarea, { minHeight: 56 }]} multiline placeholder={T.today.intentionPlaceholder} placeholderTextColor={colors.faint} value={prayerIntention} onChangeText={setPrayerIntention} />
           <TouchableOpacity
             style={[styles.checkboxRow, { marginTop: 14 }]}
             onPress={() => setFlagForConfession(v => !v)}
@@ -291,27 +305,27 @@ export default function JournalScreen() {
             <View style={[styles.checkbox, flagForConfession && styles.checkboxChecked]}>
               {flagForConfession && <Text style={styles.checkboxTick}>✓</Text>}
             </View>
-            <Text style={styles.checkboxLabel}>📌  Bring this up with Abouna at my next confession</Text>
+            <Text style={styles.checkboxLabel}>{T.today.flagForConfession}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.btnGoldFull, (!reflection.trim() || savingEntry || !!unavailable) && styles.btnDisabled]}
             onPress={saveEntry}
             disabled={!reflection.trim() || savingEntry || !!unavailable}
           >
-            {savingEntry ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.btnGoldFullText}>SAVE ENTRY</Text>}
+            {savingEntry ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.btnGoldFullText}>{T.today.save}</Text>}
           </TouchableOpacity>
           <PrivacyNote text={PRIVACY_COPY.journal} />
         </Card>
 
         {/* Past Entries */}
-        <Card title={`Past Entries (${entries.length})`} flat>
+        <Card title={fmt(T.past.title, { n: entries.length })} flat>
           {loading ? (
             <ActivityIndicator color={colors.gold} style={{ paddingVertical: 20 }} />
           ) : entries.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>◎</Text>
-              <Text style={styles.emptyTitle}>No entries yet</Text>
-              <Text style={styles.emptyBody}>Your saved entries will appear here.</Text>
+              <Text style={styles.emptyTitle}>{T.past.emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{T.past.emptyBody}</Text>
             </View>
           ) : (
             entries.map(entry => (
@@ -326,15 +340,14 @@ export default function JournalScreen() {
 
         {/* Blessings — a running record of what God has done, to be read back
             later. Newest first; only the latest few show until unfolded. */}
-        <Card title={`Blessings${blessings.length ? ` (${blessings.length})` : ''}`} titleIcon="✧">
+        <Card title={blessings.length ? fmt(T.blessings.titleCount, { n: blessings.length }) : T.blessings.title} titleIcon="✧">
           <Text style={styles.blessingIntro}>
-            Write down what God has done — an answered prayer, a kindness, a door that opened.
-            In a harder season, come back and read them.
+            {T.blessings.intro}
           </Text>
           <TextInput
             style={[styles.textarea, { minHeight: 64 }]}
             multiline
-            placeholder="e.g. Mom's surgery went well — thank You, Lord."
+            placeholder={T.blessings.placeholder}
             placeholderTextColor={colors.faint}
             value={blessingText}
             onChangeText={setBlessingText}
@@ -344,14 +357,14 @@ export default function JournalScreen() {
             onPress={addBlessing}
             disabled={!blessingText.trim() || savingBlessing || !!unavailable}
           >
-            {savingBlessing ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.btnGoldFullText}>ADD BLESSING</Text>}
+            {savingBlessing ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.btnGoldFullText}>{T.blessings.add}</Text>}
           </TouchableOpacity>
 
           {loading ? null : blessings.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>✧</Text>
-              <Text style={styles.emptyTitle}>Nothing recorded yet</Text>
-              <Text style={styles.emptyBody}>Every blessing you add stays here to be read again.</Text>
+              <Text style={styles.emptyTitle}>{T.blessings.emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{T.blessings.emptyBody}</Text>
             </View>
           ) : (
             <View style={{ marginTop: 16 }}>
@@ -370,7 +383,7 @@ export default function JournalScreen() {
               {blessings.length > BLESSINGS_PREVIEW && (
                 <TouchableOpacity onPress={() => setShowAllBlessings(v => !v)} hitSlop={6}>
                   <Text style={styles.promptExpand}>
-                    {showAllBlessings ? 'Show fewer ▴' : `Show all ${blessings.length} blessings ▾`}
+                    {showAllBlessings ? T.blessings.showFewer : fmt(T.blessings.showAll, { n: blessings.length })}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -380,17 +393,19 @@ export default function JournalScreen() {
 
         {/* Today's Prompt — the Gospel of the day from the Coptic lectionary
             (Katameros), with a static fallback when the reading can't load. */}
-        <Card title="Today's Prompt" titleIcon="◇">
+        <Card title={T.prompt.title} titleIcon="◇">
           {gospel ? (() => {
             const excerpt = gospelExcerpt(gospel);
             return (
               <>
-                <Text style={styles.promptFast}>From the Gospel of the day</Text>
-                <Text style={styles.promptQuote}>"{excerpt.text}"</Text>
+                <Text style={styles.promptFast}>{T.prompt.fromGospel}</Text>
+                {/* In Arabic the lectionary serves the reading in Arabic (Van
+                    Dyck), so it is shown as it arrives, right-to-left. */}
+                <Text style={styles.promptQuote}>{isRTL ? `«${excerpt.text}»` : `"${excerpt.text}"`}</Text>
                 <Text style={styles.promptRef}>{excerpt.ref}</Text>
                 <TouchableOpacity onPress={() => setShowFullGospel(v => !v)} hitSlop={6}>
                   <Text style={styles.promptExpand}>
-                    {showFullGospel ? 'Hide the full reading ▴' : `Read the full Gospel — ${gospel.reference} ▾`}
+                    {showFullGospel ? T.prompt.hideFull : fmt(T.prompt.readFull, { reference: gospel.reference })}
                   </Text>
                 </TouchableOpacity>
                 {showFullGospel && gospel.passages.map(p => (
@@ -407,18 +422,18 @@ export default function JournalScreen() {
                 ))}
                 <View style={styles.divider} />
                 <Text style={styles.promptReflection}>
-                  Sit with these words from today's liturgy. What is the Lord saying to you
-                  through them? Let your entry begin there.
+                  {T.prompt.gospelReflection}
                 </Text>
               </>
             );
           })() : (
             <>
-              <Text style={styles.promptQuote}>"Watch and pray that you may not enter into temptation. The spirit indeed is willing, but the flesh is weak."</Text>
-              <Text style={styles.promptRef}>Matthew 26:41</Text>
+              {isRTL && <Text style={styles.scriptureNote}>{S.common.scriptureInEnglish}</Text>}
+              <Text style={[styles.promptQuote, ltrText]}>"Watch and pray that you may not enter into temptation. The spirit indeed is willing, but the flesh is weak."</Text>
+              <Text style={styles.promptRef}>{T.prompt.fallbackRef}</Text>
               <View style={styles.divider} />
               <Text style={styles.promptReflection}>
-                Reflect on a moment this week when your spirit was willing but your flesh felt weak. What did you learn about yourself? What did you learn about God's grace?
+                {T.prompt.fallbackReflection}
               </Text>
             </>
           )}
@@ -477,6 +492,8 @@ const styles = lazyThemed(() => StyleSheet.create({
   emptyBody: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, textAlign: 'center', lineHeight: 17, opacity: 0.7 },
 
   promptFast: { fontFamily: fonts.latoBold, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.gold, opacity: 0.75, marginBottom: 8 },
+  // Shown above scripture while the app is in another language.
+  scriptureNote: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginBottom: 6 },
   promptQuote: { fontFamily: fonts.cormorantItalic, fontSize: 17, color: colors.cream, lineHeight: 26, marginBottom: 8 },
   promptRef: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginBottom: 10 },
   promptReflection: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, lineHeight: 20 },

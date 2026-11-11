@@ -10,16 +10,19 @@ import { Drawer } from 'expo-router/drawer';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { S, isRTL } from '@/lib/i18n';
 import Harp from '@/components/ui/Harp';
 import { HouseIcon, NotepadIcon, PrayingHandsIcon, CandleIcon, CalendarIcon } from '@/components/ui/TabIcons';
+
+const T = S.shell.drawer;
 
 function DrawerHeader() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.brand, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.brandCross}>✝︎</Text>
-      <Text style={styles.brandName}>Nepsis</Text>
-      <Text style={styles.brandSub}>pastoral care, rooted in Tradition</Text>
+      <Text style={styles.brandName}>{S.common.appName}</Text>
+      <Text style={styles.brandSub}>{T.tagline}</Text>
     </View>
   );
 }
@@ -45,6 +48,9 @@ export default function DrawerLayout() {
         headerShown: false,
         swipeEnabled: true,
         swipeEdgeWidth: 60,
+        // The drawer opens from the side reading starts on. Set explicitly:
+        // on web React Navigation cannot see the page's direction.
+        drawerPosition: isRTL ? 'right' : 'left',
         drawerActiveTintColor: colors.gold,
         drawerInactiveTintColor: colors.muted,
         drawerActiveBackgroundColor: colors.goldDim,
@@ -53,31 +59,31 @@ export default function DrawerLayout() {
       }}
     >
       <Drawer.Screen name="index" options={{
-        title: 'Home',
+        title: T.home,
         drawerIcon: ({ color }: IconProps) => <HouseIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="confession" options={{
-        title: 'Confession',
+        title: T.confession,
         drawerIcon: ({ color }: IconProps) => <Text style={{ fontSize: 18, color, width: 20, textAlign: 'center' }}>✝︎</Text>,
       }} />
       <Drawer.Screen name="appointments" options={{
-        title: 'Appointments',
+        title: T.appointments,
         drawerIcon: ({ color }: IconProps) => <CalendarIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="journal" options={{
-        title: 'Journal',
+        title: T.journal,
         drawerIcon: ({ color }: IconProps) => <NotepadIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="prayer" options={{
-        title: 'Prayer',
+        title: T.prayer,
         drawerIcon: ({ color }: IconProps) => <PrayingHandsIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="psalms" options={{
-        title: 'Psalms',
+        title: T.psalms,
         drawerIcon: ({ color }: IconProps) => <Harp size={20} color={color} />,
       }} />
       <Drawer.Screen name="canon" options={{
-        title: 'Canon',
+        title: T.canon,
         drawerIcon: ({ color }: IconProps) => <CandleIcon size={20} color={color} />,
       }} />
     </Drawer>

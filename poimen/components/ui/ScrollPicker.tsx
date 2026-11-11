@@ -9,6 +9,18 @@ import {
   NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
+import { isRTL, directionStyle } from '@/lib/i18n';
+
+// The strip is positioned by scroll offset, which counts from the left. Under
+// a right-to-left page a horizontal list counts from the other edge (and, on
+// web, downwards from zero), so the picker stays left-to-right in every
+// language: same order, same offsets, same maths as in English.
+const PICKER_DIRECTION = directionStyle('ltr');
+// Inside that left-to-right strip an Arabic label that begins with a number
+// ("9:00 ص") would be laid out as left-to-right text and read backwards. A
+// right-to-left mark in front keeps the label itself in Arabic order. Display
+// only: the option handed back to onChange is the one that was passed in.
+const RTL_MARK = isRTL ? '‏' : '';
 
 interface Props {
   options: string[];
@@ -59,8 +71,10 @@ export default function ScrollPicker({ options, value, onChange, itemWidth = 96 
   }, [w, value, committed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <View onLayout={e => setW(e.nativeEvent.layout.width)} style={styles.wrap}>
-      <View pointerEvents="none" style={[styles.highlight, { width: itemWidth, marginLeft: -itemWidth / 2, borderColor: colors.gold }]} />
+    <View onLayout={e => setW(e.nativeEvent.layout.width)} style={[styles.wrap, PICKER_DIRECTION]}>
+      {/* left and marginLeft are kept together, inline, so the two halves of
+          the centring are never mirrored one without the other. */}
+      <View pointerEvents="none" style={[styles.highlight, { left: '50%', width: itemWidth, marginLeft: -itemWidth / 2, borderColor: colors.gold }]} />
       <ScrollView
         ref={ref}
         horizontal
@@ -85,7 +99,7 @@ export default function ScrollPicker({ options, value, onChange, itemWidth = 96 
       >
         {options.map((opt, i) => (
           <View key={opt} style={[styles.item, { width: itemWidth }]}>
-            <Text style={{ fontSize: i === active ? 18 : 14, fontFamily: fonts.latoBold, color: i === active ? colors.goldLight : colors.muted }}>{opt}</Text>
+            <Text style={{ fontSize: i === active ? 18 : 14, fontFamily: fonts.latoBold, color: i === active ? colors.goldLight : colors.muted }}>{RTL_MARK}{opt}</Text>
           </View>
         ))}
       </ScrollView>
@@ -95,6 +109,6 @@ export default function ScrollPicker({ options, value, onChange, itemWidth = 96 
 
 const styles = lazyThemed(() => StyleSheet.create({
   wrap:      { height: 52, justifyContent: 'center' },
-  highlight: { position: 'absolute', left: '50%', height: 40, borderRadius: 10, borderWidth: 1.5 },
+  highlight: { position: 'absolute', height: 40, borderRadius: 10, borderWidth: 1.5 },
   item:      { height: 52, alignItems: 'center', justifyContent: 'center' },
 }));

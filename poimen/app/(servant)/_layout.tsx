@@ -10,14 +10,17 @@ import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { CongregationIcon, PersonIcon, CandleIcon } from '@/components/ui/TabIcons';
+import { S, isRTL } from '@/lib/i18n';
+
+const T = S.servant.drawer;
 
 function DrawerHeader() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.brand, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.brandCross}>✝︎</Text>
-      <Text style={styles.brandName}>Nepsis</Text>
-      <Text style={styles.brandSub}>Servant of the class</Text>
+      <Text style={styles.brandName}>{S.common.appName}</Text>
+      <Text style={styles.brandSub}>{T.tagline}</Text>
     </View>
   );
 }
@@ -43,6 +46,9 @@ export default function ServantLayout() {
         headerShown: false,
         swipeEnabled: true,
         swipeEdgeWidth: 60,
+        // The drawer opens from the side reading starts on. Set explicitly:
+        // on web React Navigation cannot see the page's direction.
+        drawerPosition: isRTL ? 'right' : 'left',
         drawerActiveTintColor: colors.gold,
         drawerInactiveTintColor: colors.muted,
         drawerActiveBackgroundColor: colors.goldDim,
@@ -51,15 +57,15 @@ export default function ServantLayout() {
       }}
     >
       <Drawer.Screen name="index" options={{
-        title: 'Students',
+        title: T.students,
         drawerIcon: ({ color }: IconProps) => <CongregationIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="student" options={{
-        title: 'Student',
+        title: T.student,
         drawerIcon: ({ color }: IconProps) => <PersonIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="assign-canon" options={{
-        title: 'Canon',
+        title: T.canon,
         drawerIcon: ({ color }: IconProps) => <CandleIcon size={20} color={color} />,
       }} />
     </Drawer>

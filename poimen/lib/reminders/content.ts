@@ -28,7 +28,19 @@ import { loadAssignedForMember, applyOverlay } from '@/lib/canon/assigned';
 import { lastConfessionDate } from '@/lib/confession/dates';
 import { loadSelection, loadCards, loadStreak, isFullyMature, cardId, PartCard } from '@/lib/psalms/store';
 import { itemUnitCount, itemLabel } from '@/lib/psalms/psalter';
-import { cleanLabel, describeItems } from './phrasing';
+import { cleanLabel, describeItems, ListWords } from './phrasing';
+import { S, lang, plural } from '@/lib/i18n';
+
+const T = S.reminders.notification;
+
+// The list sentence in the app's language, for phrasing.ts (which cannot read
+// the dictionary itself).
+const LIST_WORDS: ListWords = {
+  one: T.listOne,
+  two: T.listTwo,
+  more: n => plural(T.listMore, n),
+  lowerLater: lang === 'en',
+};
 
 export interface ReminderContent {
   title: string;
@@ -101,8 +113,8 @@ export async function canonReminder(
   if (remaining.length === 0) return null;
 
   return {
-    title: remaining.length === items.length ? 'Your canon today' : 'The rest of your canon',
-    body: describeItems(remaining.map(it => cleanLabel(it.label))),
+    title: remaining.length === items.length ? T.canonToday : T.canonRest,
+    body: describeItems(remaining.map(it => cleanLabel(it.label)), LIST_WORDS),
   };
 }
 
@@ -151,22 +163,20 @@ export function psalmsReminder(date: Date, { selection, cards, streak }: PsalmCo
   // leads whenever there is one to lose. `last` is the day a review was last
   // recorded — a streak already extended today needs no rescuing.
   const streakLive = streak.current > 0 && streak.last !== localDateStr(new Date());
-  const title = streakLive ? `Keep your ${streak.current}-day streak` : 'Time for your psalms';
+  const title = streakLive ? plural(T.psalmsStreak, streak.current) : T.psalmsTitle;
 
   let body: string;
   if (due > 0 && dueItems.length === 1) {
-    body = `${due} ${plural(due, 'portion')} of ${dueItems[0]} ready to review.`;
+    body = plural(T.psalmsDueOne, due, { item: dueItems[0] });
   } else if (due > 0) {
-    body = `${due} ${plural(due, 'portion')} ready to review across ${dueItems.length} passages.`;
+    body = plural(T.psalmsDueAcross, due, { passages: plural(T.passages, dueItems.length) });
   } else {
     // Deliberately not a count. `unlearned` totals every portion not yet seen
     // across the whole selection, while newQueue only ever serves them from
     // the one passage being learned — so a number here would overstate what
     // opening the tab actually offers.
-    body = 'Nothing to review — a good day to learn a new portion.';
+    body = T.psalmsLearnNew;
   }
 
   return { title, body };
 }
-
-const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);

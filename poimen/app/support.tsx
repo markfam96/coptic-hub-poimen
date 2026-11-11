@@ -6,6 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { APP_NAME, APP_NAME_UPPER } from '@/lib/brand';
+import { S, fmt } from '@/lib/i18n';
+
+const T = S.support;
 
 const CONTACT_EMAIL = 'bsaleeb@gmail.com';
 
@@ -15,15 +18,12 @@ export default function SupportScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
-        <Text style={styles.eyebrow}>{APP_NAME_UPPER} · SUPPORT</Text>
-        <Text style={styles.title}>Help & Support</Text>
-        <Text style={styles.meta}>Questions, problems, or feedback about {APP_NAME}.</Text>
+        <Text style={styles.eyebrow}>{fmt(T.eyebrow, { app: APP_NAME_UPPER })}</Text>
+        <Text style={styles.title}>{T.title}</Text>
+        <Text style={styles.meta}>{fmt(T.intro, { app: APP_NAME })}</Text>
 
-        <Section title="Contact Us">
-          <Body>
-            Email us and we will reply, usually within two days. Please include the email address
-            you sign in with and, if something went wrong, what you were doing when it happened.
-          </Body>
+        <Section title={T.contactTitle}>
+          <Body>{T.contactBody}</Body>
           <Text
             style={[styles.body, styles.contact]}
             onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`${APP_NAME} support`)}`)}
@@ -32,47 +32,28 @@ export default function SupportScreen() {
           </Text>
         </Section>
 
-        <Section title="I forgot my password">
-          <Body>
-            On the sign-in screen, tap "Forgot password?" and enter your email. We will send you a
-            link to set a new password.
-          </Body>
+        <Section title={T.passwordTitle}>
+          <Body>{T.passwordBody}</Body>
         </Section>
 
-        <Section title="I forgot my PIN">
-          <Body>
-            Your PIN never leaves your phone, so no one — not your church, and not us — can recover or
-            reset it. If it is lost, choose "I forgot my PIN — start fresh" when asked for it. You
-            will get a new PIN and keep your account, but anything encrypted under the old one
-            (prayer requests, pastoral notes, your journal) can no longer be opened.
-          </Body>
+        <Section title={T.pinTitle}>
+          <Body>{T.pinBody}</Body>
         </Section>
 
-        <Section title="Linking to my Father of Confession">
-          <Body>
-            Ask your priest or servant for their 6-character invite code, then enter it in the app
-            when asked to link. You choose what they can see, and you can revoke that from your
-            Profile at any time.
-          </Body>
+        <Section title={T.linkTitle}>
+          <Body>{T.linkBody}</Body>
         </Section>
 
-        <Section title="Deleting my account">
-          <Body>
-            In the app, open your Profile, tap "Delete my account", and type DELETE to confirm. The
-            deletion is immediate and cannot be undone. The screen lists exactly what is removed,
-            and what your priest keeps (his own records of pastoral encounters, no longer linked to
-            any account).
-          </Body>
-          <Body>
-            If you can no longer sign in, email us from the address on your account and we will
-            delete it for you.
-          </Body>
+        <Section title={T.deleteTitle}>
+          <Body>{T.deleteBody}</Body>
+          <Body>{T.deleteNoSignIn}</Body>
         </Section>
 
-        <Section title="Privacy">
+        <Section title={T.privacyTitle}>
           <Body>
-            How we collect, protect, and share your data is described in our{' '}
-            <Text style={styles.link} onPress={() => router.push('/privacy')}>Privacy Policy</Text>.
+            {T.privacyLinkBefore}
+            <Text style={styles.link} onPress={() => router.push('/privacy')}>{T.privacyLinkText}</Text>
+            {T.privacyLinkAfter}
           </Body>
         </Section>
 

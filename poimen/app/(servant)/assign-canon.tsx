@@ -8,34 +8,35 @@ import { ClipboardIcon, CalendarIcon, PencilIcon } from '@/components/ui/TabIcon
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
+import { S, fmt, fmtDate, GLYPH, isRTL } from '@/lib/i18n';
+import { parseLocalDate } from '@/lib/confession/dates';
+
+const T = S.canonEditor.servant;
 
 type FrequencyType = 'Daily' | '3x/week' | 'Weekly' | 'Custom';
 
 // Servants assign Prayer + Scripture only
+// `group` is the key the open section is tracked by; `title` is what is shown.
+// The items are ready-made text: the one chosen is saved as the practice
+// exactly as a practice typed by hand would be, in the servant's own language.
 const PRESET_COMPONENTS = [
   {
     group: 'Prayer',
-    items: [
-      'Morning Agpeya',
-      'Evening Agpeya',
-      'Short morning prayer (Our Father + Glory Be)',
-      'Intercessory prayer for family',
-      'Gratitude prayer before bed',
-    ],
+    title: T.groupPrayer,
+    items: T.prayerPresets,
   },
   {
     group: 'Scripture',
-    items: [
-      'Gospel Reading (1 chapter)',
-      'Psalm Reading (1 psalm)',
-      'Proverbs Reading (1 chapter)',
-      'Read a passage and write one reflection',
-      'Memorize one Bible verse per week',
-    ],
+    title: T.groupScripture,
+    items: T.scripturePresets,
   },
 ];
 
 const FREQ_OPTS: FrequencyType[] = ['Daily', '3x/week', 'Weekly', 'Custom'];
+
+// A name set inside a capitalised English button. Arabic has no capitals, and
+// a Latin name inside an Arabic sentence is left as it was written.
+const upper = (name: string) => (isRTL ? name : name.toUpperCase());
 
 export default function ServantAssignCanonScreen() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function ServantAssignCanonScreen() {
   const [frequency, setFrequency] = useState<FrequencyType>('Daily');
   const [customFreq, setCustomFreq] = useState('');
   const [startDate, setStartDate] = useState(tomorrow());
+  const [saveError, setSaveError] = useState('');
   const [reflectionPrompt, setReflectionPrompt] = useState('');
   const [expandedGroup, setExpandedGroup] = useState<string | null>('Prayer');
   const [saving, setSaving] = useState(false);
@@ -55,26 +57,32 @@ export default function ServantAssignCanonScreen() {
   const [showScopeInfo, setShowScopeInfo] = useState(false);
 
   const component = customComponent.trim() || selectedComponent;
-  const displayName = studentName ?? 'Student';
+  const displayName = studentName ?? T.studentFallback;
   const firstName = displayName.split(' ')[0];
 
   async function handleSave() {
     if (!component || saving) return;
+    // The field accepts a date the way the app writes one in either language
+    // («8 يونيو 2026», "Jun 8, 2026"); the server is sent YYYY-MM-DD.
+    const start = parseLocalDate(startDate);
+    if (!start) { setSaveError(T.startDateInvalid); return; }
+    setSaveError('');
     if (demoMode) {
       setSaved(true);
       setTimeout(() => router.back(), 1300);
       return;
     }
     setSaving(true);
-    await db.insertCanon({
+    const { error } = await db.insertCanon({
       congregant_id: studentId,
       priest_id: user!.id,
       component,
       frequency: frequency === 'Custom' ? customFreq || frequency : frequency,
-      start_date: startDate,
+      start_date: isoDate(start),
       reflection_prompt: reflectionPrompt.trim() || null,
       active: true,
     });
+    if (error) { setSaving(false); setSaveError(T.saveFailed); return; }
     setSaved(true);
     setSaving(false);
     setTimeout(() => router.back(), 1300);
@@ -85,41 +93,41 @@ export default function ServantAssignCanonScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
         <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-          <Text style={styles.backArrow}>‹</Text>
+          <Text style={styles.backArrow}>{GLYPH.back}</Text>
           <Text style={styles.backText}>{displayName}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.pageTitle}>Assign Canon</Text>
+        <Text style={styles.pageTitle}>{T.title}</Text>
         <View style={styles.pageSubRow}>
-          <Text style={styles.pageSub}>{displayName} · Sunday School Student</Text>
+          <Text style={styles.pageSub}>{fmt(T.subtitle, { name: displayName })}</Text>
           <TouchableOpacity onPress={() => setShowScopeInfo(true)} style={styles.infoBtn}>
-            <Text style={styles.infoBtnText}>Prayer & Scripture only  ⓘ</Text>
+            <Text style={styles.infoBtnText}>{T.scopeButton}</Text>
           </TouchableOpacity>
         </View>
 
         <Modal visible={showScopeInfo} transparent animationType="fade" onRequestClose={() => setShowScopeInfo(false)}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowScopeInfo(false)}>
             <View style={styles.tooltipBox}>
-              <Text style={styles.tooltipTitle}>Why only Prayer & Scripture?</Text>
+              <Text style={styles.tooltipTitle}>{T.scopeTitle}</Text>
               <Text style={styles.tooltipBody}>
-                As a Sunday School servant, you can assign Prayer and Bible Reading canons to your students.{'\n\n'}Fasting, Confession, and advanced spiritual practices are assigned by the Father of Confession.
+                {T.scopeBody}
               </Text>
               <TouchableOpacity onPress={() => setShowScopeInfo(false)}>
-                <Text style={styles.tooltipDismiss}>Got it</Text>
+                <Text style={styles.tooltipDismiss}>{T.scopeDismiss}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </Modal>
 
-        <Card title="Choose Practice" titleIconNode={<ClipboardIcon size={16} color={colors.gold} />}>
+        <Card title={T.choosePractice} titleIconNode={<ClipboardIcon size={16} color={colors.gold} />}>
           {PRESET_COMPONENTS.map(group => (
             <View key={group.group}>
               <TouchableOpacity
                 style={styles.groupHeader}
                 onPress={() => setExpandedGroup(expandedGroup === group.group ? null : group.group)}
               >
-                <Text style={styles.groupTitle}>{group.group}</Text>
-                <Text style={styles.groupChevron}>{expandedGroup === group.group ? '▾' : '›'}</Text>
+                <Text style={styles.groupTitle}>{group.title}</Text>
+                <Text style={styles.groupChevron}>{expandedGroup === group.group ? '▾' : GLYPH.forward}</Text>
               </TouchableOpacity>
               {expandedGroup === group.group && (
                 <View style={styles.groupItems}>
@@ -138,17 +146,17 @@ export default function ServantAssignCanonScreen() {
             </View>
           ))}
           <View style={styles.divider} />
-          <Text style={styles.orLabel}>— or enter a custom practice —</Text>
+          <Text style={styles.orLabel}>{T.orCustom}</Text>
           <TextInput
             style={styles.textInput}
-            placeholder="E.g., Read one Bible story each evening with a parent"
+            placeholder={T.customPlaceholder}
             placeholderTextColor={colors.faint}
             value={customComponent}
             onChangeText={t => { setCustomComponent(t); if (t) setSelectedComponent(''); }}
           />
         </Card>
 
-        <Card title="Frequency" titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
+        <Card title={T.frequency} titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
           <View style={styles.freqRow}>
             {FREQ_OPTS.map(opt => (
               <TouchableOpacity
@@ -156,14 +164,14 @@ export default function ServantAssignCanonScreen() {
                 style={[styles.freqPill, frequency === opt && styles.freqPillActive]}
                 onPress={() => setFrequency(opt)}
               >
-                <Text style={[styles.freqText, frequency === opt && styles.freqTextActive]}>{opt}</Text>
+                <Text style={[styles.freqText, frequency === opt && styles.freqTextActive]}>{T.freq[opt]}</Text>
               </TouchableOpacity>
             ))}
           </View>
           {frequency === 'Custom' && (
             <TextInput
               style={[styles.textInput, { marginTop: 10 }]}
-              placeholder="Describe the frequency..."
+              placeholder={T.customFreqPlaceholder}
               placeholderTextColor={colors.faint}
               value={customFreq}
               onChangeText={setCustomFreq}
@@ -171,27 +179,29 @@ export default function ServantAssignCanonScreen() {
           )}
         </Card>
 
-        <Card title="Start Date" titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
+        <Card title={T.startDate} titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
           <TextInput
             style={styles.textInput}
             value={startDate}
             onChangeText={setStartDate}
-            placeholder="E.g., Jun 8, 2026"
+            placeholder={T.startDatePlaceholder}
             placeholderTextColor={colors.faint}
           />
         </Card>
 
-        <Card title="Encouragement Note (Optional)" titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
+        <Card title={T.noteTitle} titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
           <TextInput
             style={[styles.textInput, { minHeight: 70, textAlignVertical: 'top' }]}
-            placeholder={`Leave an encouraging note for ${firstName}...`}
+            placeholder={fmt(T.notePlaceholder, { name: firstName })}
             placeholderTextColor={colors.faint}
             multiline
             value={reflectionPrompt}
             onChangeText={setReflectionPrompt}
           />
-          <Text style={styles.fieldHint}>Visible to the student in their Canon panel.</Text>
+          <Text style={styles.fieldHint}>{T.noteHint}</Text>
         </Card>
+
+        {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
 
         <TouchableOpacity
           style={[styles.saveBtn, (!component || saving) && styles.saveBtnDisabled]}
@@ -200,7 +210,7 @@ export default function ServantAssignCanonScreen() {
         >
           {saving
             ? <ActivityIndicator color={colors.navy} />
-            : <Text style={styles.saveBtnText}>{saved ? `✓ ASSIGNED TO ${firstName.toUpperCase()}` : `ASSIGN TO ${firstName.toUpperCase()}`}</Text>
+            : <Text style={styles.saveBtnText}>{fmt(saved ? T.assigned : T.assign, { name: upper(firstName) })}</Text>
           }
         </TouchableOpacity>
 
@@ -209,10 +219,17 @@ export default function ServantAssignCanonScreen() {
   );
 }
 
+// The field's starting text, in the form the app shows dates in (English:
+// "Nov 10, 2026", as before). handleSave reads it back with parseLocalDate.
 function tomorrow(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDate(d, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function isoDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 const styles = lazyThemed(() => StyleSheet.create({
@@ -260,5 +277,6 @@ const styles = lazyThemed(() => StyleSheet.create({
 
   saveBtn: { backgroundColor: colors.gold, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.35 },
+  saveError: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.red, textAlign: 'center', lineHeight: 18, marginBottom: 10 },
   saveBtnText: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.navy, letterSpacing: 1 },
 }));

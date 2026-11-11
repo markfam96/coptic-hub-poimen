@@ -4,6 +4,7 @@
 // member can report a problem without it landing in a pastoral relationship).
 
 import { supabase } from '@/lib/supabase';
+import { S } from '@/lib/i18n';
 
 export type FeedbackCategory = 'bug' | 'idea' | 'other';
 export type FeedbackStatus = 'new' | 'read' | 'resolved';
@@ -35,7 +36,7 @@ export async function submitFeedback(
   context: FeedbackContext,
 ): Promise<{ error: string | null }> {
   const body = message.trim();
-  if (!body) return { error: 'Please write something first.' };
+  if (!body) return { error: S.servant.data.writeFirst };
   const { error } = await supabase.from('app_feedback').insert({
     user_id: userId,
     category,
@@ -44,7 +45,7 @@ export async function submitFeedback(
   });
   // The message is the member's own words — surface that the send failed, not
   // the raw Postgres text, which would mean nothing to them.
-  return { error: error ? 'Could not send just now — please try again.' : null };
+  return { error: error ? S.servant.data.sendFailed : null };
 }
 
 // The member's own reports, newest first. RLS scopes this to the caller.

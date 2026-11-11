@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ScrollView, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+  ScrollView, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform,
 } from 'react-native';
 import * as H from '@/lib/haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,26 +12,30 @@ import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
-import { loadRule, WEEKDAYS, SERVICES } from '@/lib/canon/rule-store';
+import { loadRule, WEEKDAY_SHORT, SERVICES, freqLabel, freqInSentence } from '@/lib/canon/rule-store';
 import {
   loadServiceLog, ensurePeriods, periodCounts, loggedOn, logAttendance, unlogLatest,
 } from '@/lib/canon/service-log';
 import { hydrateRuleFromCloud } from '@/lib/canon/rule-sync';
-import { todayItems, customDueToday, RuleItem, weeklyServiceKey, isWeeklyServiceKey, serviceKeyOf } from '@/lib/canon/today';
+import { todayItems, customDueToday, countedServiceLabels, RuleItem, weeklyServiceKey, isWeeklyServiceKey, serviceKeyOf } from '@/lib/canon/today';
 import { isFastDay } from '@/lib/canon/fasting';
 import { loadChecks, saveChecks, backfillDates, isSameDay } from '@/lib/canon/checks';
 import { loadAttendance, logAttendanceOn, unlogAttendanceOn } from '@/lib/canon/attendance';
-import { periodStart, periodNoun } from '@/lib/canon/periods';
+import { periodStart } from '@/lib/canon/periods';
 import type { ServiceCount } from '@/lib/canon/rule-store';
 import {
   postponeOptionsFor, PostponeOption, loadPostponements, postponeServiceItem,
   loadServiceDone, recordServiceDone, clearServiceDone, localDateStr,
 } from '@/lib/canon/postpone';
 import { recordCanonDay, finalizeWeeklyServices } from '@/lib/canon/history';
+import { describeAssigned } from '@/lib/canon/describe';
 import { lastConfessionDate, daysSinceDate, confessionFrequencyDays } from '@/lib/confession/dates';
 import { loadAssignedForMember, applyOverlay, categoryForItemKey } from '@/lib/canon/assigned';
 import { BookIcon, CandleIcon, PrayingHandsIcon, ChurchIcon, CrossIcon, HeartIcon } from '@/components/ui/TabIcons';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
+import { S, fmt, plural, fmtDate, GLYPH, isRTL } from '@/lib/i18n';
+
+const T = S.canon.tab;
 
 // Canon item icons (always gold), keyed by the semantic names lib/canon/today
 // emits for each rule item.
@@ -50,8 +54,8 @@ const CANON_ICONS: Record<string, React.ComponentType<{ size?: number; color?: s
 // removed; Past Canons history below still reflects assigned canons.
 
 const DEMO_HISTORY = [
-  { id: 'h1', component: 'Great Lent Canon', start_date: '2026-03-01', end_date: '2026-04-19', pct: 84, active: false },
-  { id: 'h2', component: 'New Year Canon', start_date: '2026-01-07', end_date: '2026-03-01', pct: 72, active: false },
+  { id: 'h1', component: T.demoHistoryLent, start_date: '2026-03-01', end_date: '2026-04-19', pct: 84, active: false },
+  { id: 'h2', component: T.demoHistoryNewYear, start_date: '2026-01-07', end_date: '2026-03-01', pct: 72, active: false },
 ];
 
 // ── Canon row — tap the row (or its checkbox) to check off ───
@@ -76,13 +80,13 @@ function CanonRow({ comp, done, assigned, onToggle, onPostpone }: {
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.compName, done && styles.compNameDone]}>{comp.name}</Text>
-            {assigned && <Text style={styles.compAssignedTag}>🔒 Assigned by your Father of Confession</Text>}
-            {done && <Text style={styles.compStatus}>{comp.doneLabel ?? '✓ Done today'}</Text>}
+            {assigned && <Text style={styles.compAssignedTag}>{T.assignedTag}</Text>}
+            {done && <Text style={styles.compStatus}>{comp.doneLabel ?? T.doneToday}</Text>}
           </View>
         </TouchableOpacity>
         {onPostpone && !done && (
           <TouchableOpacity style={styles.postponeBtn} onPress={() => { H.tap(); onPostpone(); }} hitSlop={8}>
-            <Text style={styles.postponeBtnText}>Postpone ▾</Text>
+            <Text style={styles.postponeBtnText}>{T.postponeButton}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -95,8 +99,8 @@ function CanonRow({ comp, done, assigned, onToggle, onPostpone }: {
 // past it = confession overdue.
 function ReadinessIndicator({ daysSince, freqDays, freqLabel }: { daysSince: number; freqDays: number; freqLabel: string }) {
   const state = daysSince <= freqDays
-    ? { icon: '✓', label: 'Ready', body: `${daysSince} day${daysSince === 1 ? '' : 's'} since confession — within your rule of ${freqLabel.toLowerCase()} confession. You are in good standing for Holy Communion.`, color: colors.green }
-    : { icon: '⚠', label: 'Confession overdue', body: `${daysSince} days since your last confession — your canon calls for ${freqLabel.toLowerCase()} confession. Consider scheduling before your next Communion.`, color: colors.red };
+    ? { icon: '✓', label: T.readyLabel, body: plural(T.readyBody, daysSince, { freq: freqInSentence(freqLabel) }), color: colors.green }
+    : { icon: '⚠', label: T.overdueLabel, body: plural(T.overdueBody, daysSince, { freq: freqInSentence(freqLabel) }), color: colors.red };
 
   return (
     <View style={[styles.readinessRow, { borderColor: `${state.color}33` }]}>
@@ -208,10 +212,12 @@ export default function CanonScreen() {
     const customItems: RuleItem[] = overlay.customComponents
       .filter(c => customDueToday(c.frequency, c.days, day, serviceDone, `assigned_${c.id}`, postponed))
       .map(c => {
-        const daysLabel = c.days?.length ? ` · ${c.days.map(d => WEEKDAYS[d].slice(0, 3)).join(', ')}` : '';
+        const daysLabel = c.days?.length ? c.days.map(d => WEEKDAY_SHORT[d]).join(S.canon.listSeparator) : '';
         return {
           key: `assigned_${c.id}`, icon: 'quiet',
-          label: c.frequency ? `${c.text} · ${c.frequency}${daysLabel}` : c.text,
+          label: !c.frequency ? c.text
+            : daysLabel ? fmt(T.assignedWithFreqDays, { text: c.text, freq: freqLabel(c.frequency), days: daysLabel })
+            : fmt(T.assignedWithFreq, { text: c.text, freq: freqLabel(c.frequency) }),
           // A rest-period frequency makes check-offs record a done date, so
           // e.g. a monthly component sleeps until next month once completed.
           freq: c.frequency && c.frequency !== 'Daily' && c.frequency !== 'Weekly' ? c.frequency : undefined,
@@ -351,9 +357,8 @@ export default function CanonScreen() {
         adding ? loggedToday.add(serviceKey) : loggedToday.delete(serviceKey);
         return { counts: { ...prev.counts, [serviceKey]: next }, loggedToday };
       });
-      const svcName = SERVICES.find(s => s.key === serviceKey)?.name ?? serviceKey;
       setRuleItems(prev => (prev ?? []).map(it => it.key === item.key
-        ? { ...it, label: `${SERVICES.find(s => s.key === serviceKey)?.verb ?? 'Attend'} ${svcName} — ${next} of ${target} this ${periodNoun(cfg?.freq ?? 'Weekly')}`, doneLabel: `✓ Complete for this ${periodNoun(cfg?.freq ?? 'Weekly')}` }
+        ? { ...it, ...countedServiceLabels(serviceKey, next, target, cfg?.freq ?? 'Weekly') }
         : it));
       setChecked(prev => {
         const set = new Set(prev);
@@ -398,24 +403,24 @@ export default function CanonScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>Spiritual Canon</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
-        <Text style={styles.pageSubtitle}>A remedy for the soul, not a task list</Text>
+        <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
         {/* My Spiritual Canon — the user's own rule of prayer for today */}
         <Card
-          title="My Spiritual Canon"
+          title={T.cardTitle}
           flat
           action={
             <View style={styles.headerActions}>
               {fastingToday && (
-                <View style={styles.fastBadge}><Text style={styles.fastBadgeText}>Fasting day</Text></View>
+                <View style={styles.fastBadge}><Text style={styles.fastBadgeText}>{T.fastingDay}</Text></View>
               )}
               {items.length > 0 && (
                 <Text style={styles.headerCount}>{completedCount}/{items.length}</Text>
               )}
               <TouchableOpacity onPress={() => { H.tap(); router.push('/canon/rule'); }} hitSlop={8}>
-                <Text style={styles.editLink}>Edit ›</Text>
+                <Text style={styles.editLink}>{S.common.edit} {GLYPH.forward}</Text>
               </TouchableOpacity>
             </View>
           }
@@ -429,12 +434,19 @@ export default function CanonScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dayStrip}
-            // Today is the right-hand end of the strip and the day you land on,
+            // Today is the far end of the strip and the day you land on,
             // so open there — scrolling back is the deliberate move.
             onContentSizeChange={() => {
               if (dayStripPinned.current) return;
               dayStripPinned.current = true;
-              dayStripRef.current?.scrollToEnd({ animated: false });
+              // On a right-to-left web page the scroll offset runs from 0 down
+              // to a negative number, so "the end" is a large negative x there;
+              // native handles its own mirroring.
+              // Android's scrollToEnd goes to the physical right edge, which in
+              // Arabic is the oldest day; there today is at offset 0.
+              if (Platform.OS === 'web' && isRTL) dayStripRef.current?.scrollTo({ x: -100000, animated: false });
+              else if (Platform.OS === 'android' && isRTL) dayStripRef.current?.scrollTo({ x: 0, animated: false });
+              else dayStripRef.current?.scrollToEnd({ animated: false });
             }}
           >
             {days.map(d => {
@@ -447,7 +459,7 @@ export default function CanonScreen() {
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.dayChipLabel, sel && styles.dayChipTextActive]}>
-                    {isSameDay(d, new Date()) ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })}
+                    {isSameDay(d, new Date()) ? S.common.today : fmtDate(d, { weekday: 'short' })}
                   </Text>
                   <Text style={[styles.dayChipDate, sel && styles.dayChipTextActive]}>{d.getDate()}</Text>
                 </TouchableOpacity>
@@ -456,8 +468,7 @@ export default function CanonScreen() {
           </ScrollView>
           {!viewingToday && (
             <Text style={styles.backfillNote}>
-              Completing {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              {countsEditable ? '' : ' · counted services are already settled for that period'}
+              {fmt(countsEditable ? T.completingDay : T.completingDaySettled, { date: fmtDate(selectedDate, { weekday: 'long', month: 'long', day: 'numeric' }) })}
             </Text>
           )}
 
@@ -466,19 +477,18 @@ export default function CanonScreen() {
           ) : items.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={{ opacity: 0.5 }}><CandleIcon size={30} color={colors.gold} /></View>
-              <Text style={styles.emptyTitle}>No canon set yet</Text>
+              <Text style={styles.emptyTitle}>{T.emptyTitle}</Text>
               <Text style={styles.emptyBody}>
-                Set your spiritual canon with your Father of Confession — Agpeya hours, church services,
-                fasting, prostrations, quiet time, and reading, per day of the week.
+                {T.emptyBody}
               </Text>
               <TouchableOpacity style={styles.setBtn} onPress={() => { H.tap(); router.push('/canon/rule'); }} activeOpacity={0.85}>
-                <Text style={styles.setBtnText}>Set my canon</Text>
+                <Text style={styles.setBtnText}>{T.setMyCanon}</Text>
               </TouchableOpacity>
-              <Text style={styles.emptyOr}>or</Text>
+              <Text style={styles.emptyOr}>{T.or}</Text>
               {/* Without a rule there are no rows at all, so this is the only
                   way liturgy and communion can reach Spiritual Vitals. */}
               <TouchableOpacity style={styles.logBtn} onPress={() => { H.tap(); setLoggingAttendance(true); }} activeOpacity={0.8}>
-                <Text style={styles.logBtnText}>＋  Log a service or communion</Text>
+                <Text style={styles.logBtnText}>{T.logAttendance}</Text>
               </TouchableOpacity>
               {loggingAttendance && (
                 <View style={styles.logChips}>
@@ -510,7 +520,7 @@ export default function CanonScreen() {
                     />
                     {postponeFor === item.key && !checked.has(rk) && (
                       <View style={styles.postponeRow}>
-                        <Text style={styles.postponeLabel}>Postpone until</Text>
+                        <Text style={styles.postponeLabel}>{T.postponeUntil}</Text>
                         {options.map(o => (
                           <TouchableOpacity key={o.label} style={styles.postponeChip} onPress={() => applyPostpone(item.key, o)} activeOpacity={0.8}>
                             <Text style={styles.postponeChipText}>{o.label}</Text>
@@ -531,7 +541,7 @@ export default function CanonScreen() {
                 return loggingAttendance ? (
                   <View style={styles.logWrap}>
                     <Text style={styles.logLabel}>
-                      {viewingToday ? 'What did you attend today?' : 'What did you attend that day?'}
+                      {viewingToday ? T.attendedToday : T.attendedThatDay}
                     </Text>
                     <View style={styles.logChips}>
                       {offer.map(sv => (
@@ -541,12 +551,12 @@ export default function CanonScreen() {
                       ))}
                     </View>
                     <TouchableOpacity onPress={() => { H.tap(); setLoggingAttendance(false); }} activeOpacity={0.7}>
-                      <Text style={styles.logCancel}>Cancel</Text>
+                      <Text style={styles.logCancel}>{S.common.cancel}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <TouchableOpacity style={styles.logBtn} onPress={() => { H.tap(); setLoggingAttendance(true); }} activeOpacity={0.8}>
-                    <Text style={styles.logBtnText}>＋  Log a service or communion</Text>
+                    <Text style={styles.logBtnText}>{T.logAttendance}</Text>
                   </TouchableOpacity>
                 );
               })()}
@@ -556,31 +566,31 @@ export default function CanonScreen() {
         </Card>
 
         {/* Communion Readiness */}
-        <Card title="Communion Readiness" titleIcon="✝︎">
+        <Card title={T.readinessTitle} titleIcon="✝︎">
           {readiness ? (
             <ReadinessIndicator daysSince={readiness.days} freqDays={readiness.freqDays} freqLabel={readiness.freqLabel} />
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyBody}>Complete a confession (or log one on the Confession tab) and readiness guidance will appear here.</Text>
+              <Text style={styles.emptyBody}>{T.readinessEmpty}</Text>
             </View>
           )}
-          <PrivacyNote text="Based on your confession date. Your Father of Confession may adjust this guidance." />
+          <PrivacyNote text={T.readinessNote} />
         </Card>
 
         {/* Canon History */}
         {history.length > 0 && (
-          <Card title={`Past Canons (${history.length})`} flat>
+          <Card title={fmt(T.pastCanons, { n: history.length })} flat>
             {history.map((item, i) => {
               const pct = item.pct ?? 0;
-              const startFmt = item.start_date ? new Date(item.start_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '';
-              const endFmt = item.end_date ? new Date(item.end_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Ongoing';
+              const startFmt = item.start_date ? fmtDate(new Date(item.start_date), { month: 'short', year: 'numeric' }) : '';
+              const endFmt = item.end_date ? fmtDate(new Date(item.end_date), { month: 'short', year: 'numeric' }) : S.common.ongoing;
               return (
                 <View key={item.id} style={[styles.histItem, i < history.length - 1 && styles.divider]}>
                   <View style={styles.histTop}>
-                    <Text style={styles.histTitle}>{item.component ?? item.title}</Text>
+                    <Text style={styles.histTitle}>{item.component != null ? describeAssigned(item.component, item.category, item.payload) : item.title}</Text>
                     <Text style={[styles.histPct, { color: pct >= 80 ? colors.green : colors.muted }]}>{pct}%</Text>
                   </View>
-                  <Text style={styles.histDates}>{startFmt} – {endFmt}</Text>
+                  <Text style={styles.histDates}>{fmt(T.dateRange, { start: startFmt, end: endFmt })}</Text>
                 </View>
               );
             })}

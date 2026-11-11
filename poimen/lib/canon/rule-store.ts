@@ -9,33 +9,41 @@
 // data from bleeding into another's on a shared device.
 import { userStorage as AsyncStorage } from '@/lib/storage';
 import { maxPerPeriod } from './periods';
+import { S, fmt } from '@/lib/i18n';
 
 const KEY = 'poimen.rule';
 
 // ─── Option lists ─────────────────────────────────────────────────────────────
 
 export const AGPEYA_HOURS: { key: string; name: string }[] = [
-  { key: 'prime',    name: 'First Hour (Prime)' },
-  { key: 'terce',    name: 'Third Hour (Terce)' },
-  { key: 'sext',     name: 'Sixth Hour (Sext)' },
-  { key: 'none',     name: 'Ninth Hour (None)' },
-  { key: 'vespers',  name: 'Eleventh Hour (Vespers)' },
-  { key: 'compline', name: 'Twelfth Hour (Compline)' },
-  { key: 'veil',     name: 'Prayer of the Veil' },
-  { key: 'midnight', name: 'Midnight (Three Watches)' },
+  { key: 'prime',    name: S.canon.hours.prime },
+  { key: 'terce',    name: S.canon.hours.terce },
+  { key: 'sext',     name: S.canon.hours.sext },
+  { key: 'none',     name: S.canon.hours.none },
+  { key: 'vespers',  name: S.canon.hours.vespers },
+  { key: 'compline', name: S.canon.hours.compline },
+  { key: 'veil',     name: S.canon.hours.veil },
+  { key: 'midnight', name: S.canon.hours.midnight },
 ];
 
 // `verb` is how the item reads on the Canon tab: you *attend* a service, but
 // you *receive* the Eucharist. Defaults to "Attend" where omitted.
 export const SERVICES: { key: string; name: string; verb?: string }[] = [
-  { key: 'church_vespers', name: 'Vespers (Raising of Incense)' },
-  { key: 'matins',         name: 'Matins' },
-  { key: 'liturgy',        name: 'Divine Liturgy' },
-  { key: 'communion',      name: 'Holy Communion', verb: 'Receive' },
-  { key: 'midnight_praise',name: 'Midnight Praise (Tasbeha)' },
+  { key: 'church_vespers', name: S.canon.services.church_vespers },
+  { key: 'matins',         name: S.canon.services.matins },
+  { key: 'liturgy',        name: S.canon.services.liturgy },
+  { key: 'communion',      name: S.canon.services.communion, verb: S.canon.verbReceive },
+  { key: 'midnight_praise',name: S.canon.services.midnight_praise },
 ];
 
-export const serviceVerb = (key: string) => SERVICES.find(s => s.key === key)?.verb ?? 'Attend';
+export const serviceVerb = (key: string) => SERVICES.find(s => s.key === key)?.verb ?? S.canon.verbAttend;
+
+// The whole phrase for a service as a canon item ("Attend Divine Liturgy",
+// "Receive Holy Communion"). One sentence per service rather than verb + name,
+// because the two do not join the same way in every language.
+export const serviceAction = (key: string): string =>
+  (S.canon.serviceActions as Record<string, string>)[key]
+    ?? fmt(S.canon.attendOther, { service: SERVICES.find(s => s.key === key)?.name ?? key });
 
 export const CONFESSION_OPTIONS = [
   'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months', 'Quarterly', 'Twice a year',
@@ -45,6 +53,15 @@ export const CONFESSION_OPTIONS = [
 export const SERVICE_FREQUENCY_OPTIONS = [
   'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months', 'Quarterly',
 ];
+
+// The frequency values above are what is saved and compared, so they stay as
+// they are in every language. These give the text to SHOW for one: on a chip,
+// and inside a sentence ("your rule of monthly confession"). A value with no
+// entry (an older save) is shown as stored.
+export const freqLabel = (value: string): string =>
+  (S.canon.freq as Record<string, string>)[value] ?? value;
+export const freqInSentence = (value: string): string =>
+  (S.canon.freqInSentence as Record<string, string>)[value] ?? value.toLowerCase();
 
 // On fasting days, abstain from food until this time of day — every half hour.
 function genTimeOptions(): string[] {
@@ -60,7 +77,21 @@ function genTimeOptions(): string[] {
 }
 export const FAST_UNTIL_OPTIONS = genTimeOptions();
 
+// The text shown for a stored "fast until" time ('3:00 PM'). The stored value
+// itself never changes with the language.
+export function fastUntilLabel(value: string): string {
+  const m = /^(.*) (AM|PM)$/.exec(value);
+  if (!m) return value;
+  return fmt(m[2] === 'AM' ? S.canon.timeAm : S.canon.timePm, { time: m[1] });
+}
+
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Weekday names to SHOW, index 0 = Sunday. WEEKDAYS above stays English
+// because callers outside this folder abbreviate it with .slice(0, 3), which
+// only works on the English names.
+export const WEEKDAY_NAMES: readonly string[] = S.canon.weekdays;
+export const WEEKDAY_SHORT: readonly string[] = S.canon.weekdaysShort;
 
 // ─── Model ────────────────────────────────────────────────────────────────────
 

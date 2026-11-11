@@ -11,6 +11,7 @@
 import { userStorage as AsyncStorage } from '@/lib/storage';
 import { encryptNote, decryptNote, rewrapLegacyNote, needsRewrap } from '@/lib/crypto';
 import type { JournalIncident, IncidentCategory, ExamChecks, GuidanceNote, ConfessionRecord } from './types';
+import { S } from '@/lib/i18n';
 
 const K_INCIDENTS = 'poimen.confession.incidents';
 const K_EXAM      = 'poimen.confession.exam';
@@ -93,7 +94,7 @@ export async function addIncident(
     id: makeId(),
     category: input.category,
     sinId: input.sinId,
-    title: input.title.trim() || 'Untitled',
+    title: input.title.trim() || S.confession.journal.untitled,
     note: input.note.trim(),
     createdAt: Date.now(),
   };

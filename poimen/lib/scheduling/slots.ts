@@ -5,6 +5,15 @@
 // few weeks, then the ones that collide with an already-taken time (an
 // anonymized "busy range" from the server) or that lie in the past are dropped.
 
+import { S, fmt, fmtDate, fmtTime } from '@/lib/i18n';
+import { appointments as EN_APPOINTMENTS } from '@/lib/i18n/en/appointments';
+import { appointments as AR_APPOINTMENTS } from '@/lib/i18n/ar/appointments';
+
+const EN_KEYWORDS = EN_APPOINTMENTS.focusKeywords;
+const AR_KEYWORDS = AR_APPOINTMENTS.focusKeywords;
+
+const T = S.appointments;
+
 export interface ApptType {
   id: string;
   label: string;
@@ -48,8 +57,11 @@ export interface OpenSlot {
   duration: number;      // minutes
 }
 
-export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-export const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const WEEKDAYS: string[] = [...T.weekdays];
+export const WEEKDAYS_SHORT: string[] = [...T.weekdaysShort];
+// One letter per weekday, for the head of a month grid. Not the first letter
+// of the short name: Arabic abbreviates its weekdays with a different letter.
+export const WEEKDAY_INITIALS: string[] = [...T.weekdayInitials];
 
 // How far ahead a congregant can book. A priest's rules recur weekly and never
 // expire, so this is purely how much of that recurrence we materialize — a full
@@ -61,29 +73,50 @@ export const SCHEDULE_HORIZON_DAYS = 365;
 // Appointments filter can't drift apart.
 export const VISIT_TYPE_KEYWORD = 'visit';
 
+// A priest names his appointment types in his own words and language, and the
+// member may be using the app in the other one. So a keyword matches a type
+// label in EITHER language's words for it (focusKeywords in both dictionaries),
+// whatever language the app is in now. Arabic is compared with its alef forms
+// folded together, since «اعتراف» is as often typed «إعتراف».
+export const foldLabel = (s: string) => s.toLowerCase().replace(/[أإآ]/g, 'ا');
+
+export function typeKeywordNeedles(keyword: string): string[] {
+  const k = keyword.toLowerCase();
+  const words = [k];
+  for (const dict of [EN_KEYWORDS, AR_KEYWORDS]) {
+    const own = (dict as Record<string, string>)[k];
+    if (own) words.push(...own.split('|'));
+  }
+  return [...new Set(words.map(foldLabel).filter(Boolean))];
+}
+
+export function typeLabelMatches(label: string, keyword: string): boolean {
+  const folded = foldLabel(label);
+  return typeKeywordNeedles(keyword).some(n => folded.includes(n));
+}
+
 // Minutes-past-midnight → "2:00 PM".
 export function formatMinute(m: number): string {
   // 1440 is the END of the day, and only ever appears as the end of a window.
   // Naming it keeps it apart from 0, which formats identically as "12:00 AM" —
   // otherwise a whole-day window reads "12:00 AM – 12:00 AM", which looks like
   // no window at all.
-  if (m >= 1440) return 'midnight';
+  if (m >= 1440) return T.time.midnight;
   // % 24 so anything past the last hour still reads sensibly rather than
   // wrapping into a "12:00 PM" that is indistinguishable from noon.
   const h24 = Math.floor(m / 60) % 24;
   const min = m % 60;
-  const ampm = h24 < 12 ? 'AM' : 'PM';
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
+  return fmt(h24 < 12 ? T.time.am : T.time.pm, { time: `${h12}:${String(min).padStart(2, '0')}` });
 }
 
 export function formatMinuteRange(start: number, end: number): string {
-  return `${formatMinute(start)} – ${formatMinute(end)}`;
+  return fmt(T.time.range, { start: formatMinute(start), end: formatMinute(end) });
 }
 
 // A Date → "2:00 PM".
 export function formatTime(d: Date): string {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return fmtTime(d, { hour: 'numeric', minute: '2-digit' });
 }
 
 // A Date → "Sun, Jul 26", or "Sun, Jan 3, 2027" once it crosses into another
@@ -91,7 +124,7 @@ export function formatTime(d: Date): string {
 // Pass { year: false } where a heading already gives the year.
 export function formatDayLabel(d: Date, opts: { year?: boolean } = {}): string {
   const showYear = opts.year ?? (d.getFullYear() !== new Date().getFullYear());
-  return d.toLocaleDateString('en-US', {
+  return fmtDate(d, {
     weekday: 'short', month: 'short', day: 'numeric',
     ...(showYear ? { year: 'numeric' as const } : {}),
   });
@@ -252,7 +285,7 @@ export function groupDaysByMonth(days: DayGroup[]): MonthGroup[] {
     if (!g) {
       g = {
         key,
-        label: d.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        label: fmtDate(d.date, { month: 'long', year: 'numeric' }),
         date: new Date(d.date.getFullYear(), d.date.getMonth(), 1),
         days: [],
       };

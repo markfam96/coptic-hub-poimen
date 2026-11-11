@@ -8,6 +8,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
+import { S, fmt, GLYPH } from '@/lib/i18n';
+
+const T = S.account.link;
 
 type LinkType = 'foc' | 'servant';
 
@@ -23,8 +26,7 @@ export default function LinkToFocScreen() {
   const [linked, setLinked] = useState(false);
 
   const isFOC = type !== 'servant';
-  const title = isFOC ? 'Link to Father of Confession' : 'Link to Sunday School Servant';
-  const roleLabel = isFOC ? 'priest' : 'servant';
+  const title = isFOC ? T.titleFoc : T.titleServant;
   const expectedRole = isFOC ? ['priest', 'admin'] : ['servant', 'admin'];
 
   async function handleLookup() {
@@ -36,9 +38,11 @@ export default function LinkToFocScreen() {
     if (lookupError) {
       setError(lookupError);
     } else if (!profile) {
-      setError('No one found with that code. Check the code and try again.');
+      setError(T.errNotFound);
     } else if (!expectedRole.includes(profile.role)) {
-      setError(`That code belongs to a ${profile.role}, not a ${roleLabel}.`);
+      // profile.role is the stored value; only the word shown for it is translated.
+      const role = (T.roleNouns as Record<string, string>)[profile.role] ?? profile.role;
+      setError(fmt(isFOC ? T.errWrongRoleFoc : T.errWrongRoleServant, { role }));
     } else {
       setFound(profile);
     }
@@ -54,7 +58,7 @@ export default function LinkToFocScreen() {
     if (linkError) {
       setError(linkError);
     } else if (!joined) {
-      setError('That code no longer matches. Check it and try again.');
+      setError(T.errNoLongerMatches);
     } else {
       await refreshProfile();
       setLinked(true);
@@ -67,12 +71,14 @@ export default function LinkToFocScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.successContainer}>
           <Text style={styles.successCross}>✝︎</Text>
-          <Text style={styles.successTitle}>You're linked!</Text>
+          <Text style={styles.successTitle}>{T.successTitle}</Text>
           <Text style={styles.successBody}>
-            {found?.full_name ?? 'Your leader'} can now see your spiritual profile.
+            {found?.full_name != null
+              ? fmt(T.successBody, { name: found.full_name })
+              : isFOC ? T.successBodyNoNameFoc : T.successBodyNoNameServant}
           </Text>
           <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/profile')}>
-            <Text style={styles.doneBtnText}>DONE</Text>
+            <Text style={styles.doneBtnText}>{T.done}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -85,13 +91,13 @@ export default function LinkToFocScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
           <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-            <Text style={styles.backArrow}>‹</Text>
-            <Text style={styles.backText}>Profile</Text>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{S.account.backToProfile}</Text>
           </TouchableOpacity>
 
           <Text style={styles.pageTitle}>{title}</Text>
           <Text style={styles.pageSub}>
-            Ask your {roleLabel} for their 6-character invite code, then enter it below.
+            {isFOC ? T.introFoc : T.introServant}
           </Text>
 
           <View style={styles.inputRow}>
@@ -99,7 +105,7 @@ export default function LinkToFocScreen() {
               style={styles.codeInput}
               value={code}
               onChangeText={t => { setCode(t.toUpperCase()); setError(''); setFound(null); }}
-              placeholder="A B C 1 2 3"
+              placeholder={T.codePlaceholder}
               placeholderTextColor={colors.faint}
               autoCapitalize="characters"
               maxLength={6}
@@ -112,7 +118,7 @@ export default function LinkToFocScreen() {
             >
               {loading
                 ? <ActivityIndicator color={colors.navy} />
-                : <Text style={styles.lookupBtnText}>FIND</Text>
+                : <Text style={styles.lookupBtnText}>{T.find}</Text>
               }
             </TouchableOpacity>
           </View>
@@ -123,7 +129,7 @@ export default function LinkToFocScreen() {
             <View style={styles.foundCard}>
               <Text style={styles.foundCross}>✝︎</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.foundName}>{found.full_name ?? 'Unknown'}</Text>
+                <Text style={styles.foundName}>{found.full_name ?? T.unknownName}</Text>
                 {found.church_name ? <Text style={styles.foundChurch}>{found.church_name}</Text> : null}
               </View>
               <TouchableOpacity
@@ -133,7 +139,7 @@ export default function LinkToFocScreen() {
               >
                 {loading
                   ? <ActivityIndicator color={colors.navy} />
-                  : <Text style={styles.confirmBtnText}>LINK</Text>
+                  : <Text style={styles.confirmBtnText}>{T.link}</Text>
                 }
               </TouchableOpacity>
             </View>
@@ -142,14 +148,14 @@ export default function LinkToFocScreen() {
           {found && isFOC && (
             <View style={styles.consentNote}>
               <Text style={styles.consentNoteText}>
-                By tapping LINK you allow {found.full_name ?? 'your priest'} to view your spiritual vitals, pastoral journey, and contact information. You can unlink at any time from your Profile.
+                {found.full_name != null ? fmt(T.consent, { name: found.full_name }) : T.consentNoName}
               </Text>
             </View>
           )}
 
           <View style={styles.hintBox}>
             <Text style={styles.hintText}>
-              Your {roleLabel} can find their code in the Profile tab of their Nepsis app.
+              {isFOC ? T.hintFoc : T.hintServant}
             </Text>
           </View>
 

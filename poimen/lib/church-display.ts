@@ -101,19 +101,29 @@ export function displayNickname(c: ChurchLike | null | undefined): string | null
   return nick;
 }
 
+// The words around a place name, with {city} / {state} where the name goes.
+// The screen passes the translated pair (S.church.precision); this file stays
+// import-free, so the English is the default here.
+export interface PrecisionLabels {
+  near: string;
+  inState: string;
+}
+
+export const PRECISION_LABELS_EN: PrecisionLabels = { near: 'near {city}', inState: 'in {state}' };
+
 // Coordinates the directory could only place at a city or state centroid
 // must say so, or "0.3 mi" to the middle of Cairo reads as the church.
-export function precisionLabel(c: ChurchLike | null | undefined): string | null {
+export function precisionLabel(c: ChurchLike | null | undefined, labels: PrecisionLabels = PRECISION_LABELS_EN): string | null {
   const p = clean(c?.geo_precision).toLowerCase();
   if (p === 'city') {
     const city = clean(c?.city);
-    return city ? `near ${city}` : null;
+    return city ? labels.near.replace('{city}', () => city) : null;
   }
   if (p === 'state') {
     const raw = clean(c?.state);
     if (!raw) return null;
     const name = clean(c?.country).toUpperCase() === 'US' ? (US_STATE_NAMES[raw.toUpperCase()] ?? raw) : raw;
-    return `in ${name}`;
+    return labels.inState.replace('{state}', () => name);
   }
   return null;
 }
@@ -128,14 +138,28 @@ function groupThousands(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// How a distance is worded: the unit names as shown, the mark put straight
+// before a number that is only approximate, and the phrase for anything under
+// a tenth ({unit} is where the unit name goes). The screen passes the
+// translated set (S.church.distance); English is the default.
+export interface DistanceLabels {
+  mi: string;
+  km: string;
+  approx: string;
+  under: string;
+}
+
+export const DISTANCE_LABELS_EN: DistanceLabels = { mi: 'mi', km: 'km', approx: '~', under: '< 0.1 {unit}' };
+
 // "2.3 mi" / "14 km" / "1,931 km"; below a tenth it says so rather than
 // rounding to 0. The tilde marks a centroid, not a building.
-export function formatDistance(km: number, unit: DistanceUnit, approximate = false): string {
+export function formatDistance(km: number, unit: DistanceUnit, approximate = false, labels: DistanceLabels = DISTANCE_LABELS_EN): string {
   const value = unit === 'mi' ? km / KM_PER_MILE : km;
-  const prefix = approximate ? '~' : '';
-  if (value < 0.1) return `< 0.1 ${unit}`;
-  if (value < 10) return `${prefix}${value.toFixed(1)} ${unit}`;
-  return `${prefix}${groupThousands(Math.round(value))} ${unit}`;
+  const unitName = labels[unit];
+  const prefix = approximate ? labels.approx : '';
+  if (value < 0.1) return labels.under.replace('{unit}', () => unitName);
+  if (value < 10) return `${prefix}${value.toFixed(1)} ${unitName}`;
+  return `${prefix}${groupThousands(Math.round(value))} ${unitName}`;
 }
 
 // Countries that give road distances in miles.
@@ -182,4 +206,3 @@ export function matchesQuery(key: string, query: string): boolean {
 
 export const CHURCH_DIRECTORY_URL = 'https://directory.nihov.org/';
 export const CHURCH_DIRECTORY_SUGGEST_URL = 'https://directory.nihov.org/church/new';
-export const CHURCH_DIRECTORY_CREDIT = 'Church list from the Coptic Orthodox Directory · directory.nihov.org';

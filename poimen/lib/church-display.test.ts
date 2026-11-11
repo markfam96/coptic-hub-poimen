@@ -10,7 +10,10 @@ import assert from 'node:assert/strict';
 import {
   formatChurchAddress, formatChurchLocality, countryName, COUNTRY_NAMES, displayNickname,
   formatDistance, distanceUnitFor, precisionLabel, churchSearchKey, matchesQuery,
+  DISTANCE_LABELS_EN, PRECISION_LABELS_EN,
 } from './church-display.ts';
+import { church as enChurch } from './i18n/en/church.ts';
+import { church as arChurch } from './i18n/ar/church.ts';
 
 const fairfax = { name: 'St. Mark', address_line1: '11911 Braddock Rd', city: 'Fairfax', state: 'VA', zip: '22030', country: 'US' };
 
@@ -66,6 +69,31 @@ test('distances read the way a person says them', () => {
   assert.equal(formatDistance(0.05, 'mi', true), '< 0.1 mi');
 });
 
+test('the built-in distance and precision words are the English dictionary', () => {
+  // The defaults keep this file import-free; the screen passes S.church.*.
+  // The two must not drift, or English would read differently by call site.
+  assert.deepEqual(DISTANCE_LABELS_EN, enChurch.distance);
+  assert.deepEqual(PRECISION_LABELS_EN, enChurch.precision);
+  assert.equal(formatDistance(3.7, 'mi', true, enChurch.distance), formatDistance(3.7, 'mi', true));
+  assert.equal(formatDistance(0.05, 'km', false, enChurch.distance), formatDistance(0.05, 'km'));
+  assert.equal(precisionLabel({ geo_precision: 'city', city: 'Cairo' }, enChurch.precision), 'near Cairo');
+});
+
+test('distances take their unit, approximate mark and "under" phrase from the labels', () => {
+  const ar = arChurch.distance;
+  assert.equal(formatDistance(3.7, 'mi', false, ar), '2.3 ميل');
+  assert.equal(formatDistance(23.4, 'km', false, ar), '23 كم');
+  assert.equal(formatDistance(1931, 'km', false, ar), '1,931 كم');
+  assert.equal(formatDistance(3.7, 'mi', true, ar), 'نحو 2.3 ميل');
+  assert.equal(formatDistance(1931, 'km', true, ar), 'نحو 1,931 كم');
+  // Under a tenth the phrase already says "less than"; no approximate mark.
+  assert.equal(formatDistance(0.05, 'mi', false, ar), 'أقل من 0.1 ميل');
+  assert.equal(formatDistance(0.05, 'km', true, ar), 'أقل من 0.1 كم');
+  // The unit passed in is still the stored 'mi' | 'km'; only its name changes.
+  assert.equal(formatDistance(10, 'km', false, { mi: 'M', km: 'K', approx: '≈', under: '{unit}!' }), '10 K');
+  assert.equal(formatDistance(0.01, 'mi', false, { mi: 'M', km: 'K', approx: '≈', under: '{unit}!' }), 'M!');
+});
+
 test('the unit follows the locale region, then the nearest church, then km', () => {
   assert.equal(distanceUnitFor('en-US', null), 'mi');
   assert.equal(distanceUnitFor('en_US', null), 'mi');
@@ -87,6 +115,17 @@ test('centroid rows say where they are approximate', () => {
   assert.equal(precisionLabel({ geo_precision: 'street', city: 'Cairo' }), null);
   assert.equal(precisionLabel({ geo_precision: null, city: 'Cairo' }), null);
   assert.equal(precisionLabel({ geo_precision: 'city', city: '' }), null);
+});
+
+test('the words around a centroid come from the labels; the place name is left as the directory has it', () => {
+  const ar = arChurch.precision;
+  assert.equal(precisionLabel({ geo_precision: 'city', city: 'Cairo' }, ar), 'قرب Cairo');
+  assert.equal(precisionLabel({ geo_precision: 'state', state: 'AZ', country: 'US' }, ar), 'في Arizona');
+  assert.equal(precisionLabel({ geo_precision: 'state', state: 'Friesland', country: 'NL' }, ar), 'في Friesland');
+  assert.equal(precisionLabel({ geo_precision: 'address', city: 'Cairo' }, ar), null);
+  assert.equal(precisionLabel({ geo_precision: 'city', city: '' }, ar), null);
+  // A name containing "$" is inserted as written, not read as a pattern.
+  assert.equal(precisionLabel({ geo_precision: 'city', city: 'A$&B' }, ar), 'قرب A$&B');
 });
 
 test('what is shown is what is searchable, every token must match, accents are ignored', () => {

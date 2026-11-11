@@ -17,7 +17,9 @@
     "pretypecheck": "node scripts/gen-roadmap.mjs"
   },
   "dependencies": {
+    "@expo-google-fonts/amiri": "^0.4.1",
     "@expo-google-fonts/cormorant-garamond": "^0.2.2",
+    "@expo-google-fonts/ibm-plex-sans-arabic": "^0.4.2",
     "@expo-google-fonts/lato": "^0.2.2",
     "@noble/hashes": "^1.8.0",
     "@react-native-async-storage/async-storage": "2.2.0",

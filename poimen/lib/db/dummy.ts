@@ -2,6 +2,12 @@
 // All screens import from here instead of defining local DEMO_* arrays.
 // To change demo data, edit this file only.
 
+import { S } from '@/lib/i18n';
+
+// Names, notes and practices are read from the dictionary (lib/i18n/en/demo.ts
+// and its Arabic twin); ids, emails, dates and stored values stay here.
+const D = S.demo.db;
+
 // ── Fixed IDs ────────────────────────────────────────────────
 export const DEMO_IDS = {
   priest:   'demo-priest-bishoy',
@@ -24,15 +30,15 @@ export const DEMO_USER: Record<'congregant' | 'priest' | 'servant', { id: string
 
 // ── Profiles ─────────────────────────────────────────────────
 export const DUMMY_PROFILES = [
-  { id: DEMO_IDS.priest,   full_name: 'Fr. Bishoy Marcos',       church_name: "St. Mary's Coptic Orthodox Church", role: 'priest',     avatar_url: null, foc_id: null },
-  { id: DEMO_IDS.priest2,  full_name: 'Fr. Kyrillos Abdelmassih',church_name: "St. Mark's Coptic Orthodox Church", role: 'priest',     avatar_url: null, foc_id: null },
-  { id: DEMO_IDS.servant,  full_name: 'Mary Naguib',              church_name: "St. Mary's Coptic Orthodox Church", role: 'servant',    avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.servant2, full_name: 'David Asaad',              church_name: "St. Mary's Coptic Orthodox Church", role: 'servant',    avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.cong1,    full_name: 'Michael Hanna',            church_name: "St. Mary's Coptic Orthodox Church", role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.cong2,    full_name: 'Sara Girgis',              church_name: "St. Mary's Coptic Orthodox Church", role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.cong3,    full_name: 'Peter Botros',             church_name: "St. Mary's Coptic Orthodox Church", role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.cong4,    full_name: 'Nadia Henein',             church_name: "St. Mary's Coptic Orthodox Church", role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
-  { id: DEMO_IDS.cong5,    full_name: 'Mina Aziz',                church_name: "St. Mark's Coptic Orthodox Church", role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest2 },
+  { id: DEMO_IDS.priest,   full_name: D.people.frBishoy,       church_name: D.churches.stMary, role: 'priest',     avatar_url: null, foc_id: null },
+  { id: DEMO_IDS.priest2,  full_name: D.people.frKyrillos,church_name: D.churches.stMark, role: 'priest',     avatar_url: null, foc_id: null },
+  { id: DEMO_IDS.servant,  full_name: D.people.mary,              church_name: D.churches.stMary, role: 'servant',    avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.servant2, full_name: D.people.david,              church_name: D.churches.stMary, role: 'servant',    avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.cong1,    full_name: D.people.michael,            church_name: D.churches.stMary, role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.cong2,    full_name: D.people.sara,              church_name: D.churches.stMary, role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.cong3,    full_name: D.people.peter,             church_name: D.churches.stMary, role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.cong4,    full_name: D.people.nadia,             church_name: D.churches.stMary, role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest },
+  { id: DEMO_IDS.cong5,    full_name: D.people.mina,                church_name: D.churches.stMark, role: 'congregant', avatar_url: null, foc_id: DEMO_IDS.priest2 },
 ] as const;
 
 // ── Pastoral contacts ─────────────────────────────────────────
@@ -46,11 +52,11 @@ export const DUMMY_CONTACTS: Record<string, any> = {
 
 // ── Life profiles ─────────────────────────────────────────────
 export const DUMMY_LIFE_PROFILES: Record<string, any> = {
-  [DEMO_IDS.cong1]: { user_id: DEMO_IDS.cong1, life_stage: 'young_family', marital_status: 'married', occupation: 'Software Engineer', birth_year: 1992 },
-  [DEMO_IDS.cong2]: { user_id: DEMO_IDS.cong2, life_stage: 'single',       marital_status: 'single',  occupation: 'Nurse',              birth_year: 1998 },
-  [DEMO_IDS.cong3]: { user_id: DEMO_IDS.cong3, life_stage: 'college',      marital_status: 'single',  occupation: 'Student',            birth_year: 2003 },
-  [DEMO_IDS.cong4]: { user_id: DEMO_IDS.cong4, life_stage: 'established',  marital_status: 'married', occupation: 'Teacher',            birth_year: 1985 },
-  [DEMO_IDS.cong5]: { user_id: DEMO_IDS.cong5, life_stage: 'young_family', marital_status: 'married', occupation: 'Accountant',         birth_year: 1990 },
+  [DEMO_IDS.cong1]: { user_id: DEMO_IDS.cong1, life_stage: 'young_family', marital_status: 'married', occupation: D.occupations.softwareEngineer, birth_year: 1992 },
+  [DEMO_IDS.cong2]: { user_id: DEMO_IDS.cong2, life_stage: 'single',       marital_status: 'single',  occupation: D.occupations.nurse,              birth_year: 1998 },
+  [DEMO_IDS.cong3]: { user_id: DEMO_IDS.cong3, life_stage: 'college',      marital_status: 'single',  occupation: D.occupations.student,            birth_year: 2003 },
+  [DEMO_IDS.cong4]: { user_id: DEMO_IDS.cong4, life_stage: 'established',  marital_status: 'married', occupation: D.occupations.teacher,            birth_year: 1985 },
+  [DEMO_IDS.cong5]: { user_id: DEMO_IDS.cong5, life_stage: 'young_family', marital_status: 'married', occupation: D.occupations.accountant,         birth_year: 1990 },
 };
 
 // ── Pastoral encounters ───────────────────────────────────────
@@ -62,36 +68,36 @@ function daysAgo(n: number): string {
 
 export const DUMMY_ENCOUNTERS = [
   // Michael Hanna
-  { id: 'enc-1', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'confession', encountered_at: daysAgo(47), member_note: 'Fr. Bishoy assigned a 40-day reading plan from the Psalms.' },
-  { id: 'enc-2', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'visit',      encountered_at: daysAgo(51), member_note: 'Pastoral visit following the birth of your daughter. Prayers and blessings offered.' },
-  { id: 'enc-3', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'confession', encountered_at: daysAgo(96), member_note: 'Holy Week confession. Guidance on family prayer.' },
-  { id: 'enc-4', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'group',      encountered_at: daysAgo(115), member_note: 'Discussed the Book of Job with the young couples group.' },
+  { id: 'enc-1', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'confession', encountered_at: daysAgo(47), member_note: D.encounters.psalmPlan },
+  { id: 'enc-2', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'visit',      encountered_at: daysAgo(51), member_note: D.encounters.visitAfterBirth },
+  { id: 'enc-3', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'confession', encountered_at: daysAgo(96), member_note: D.encounters.holyWeekConfession },
+  { id: 'enc-4', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong1, encounter_type: 'group',      encountered_at: daysAgo(115), member_note: D.encounters.jobWithCouples },
   // Sara Girgis
-  { id: 'enc-5', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong2, encounter_type: 'confession', encountered_at: daysAgo(18), member_note: 'Discussed fasting and the upcoming Apostles Fast.' },
-  { id: 'enc-6', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong2, encounter_type: 'counseling', encountered_at: daysAgo(45), member_note: 'Career discernment conversation.' },
+  { id: 'enc-5', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong2, encounter_type: 'confession', encountered_at: daysAgo(18), member_note: D.encounters.fastingTalk },
+  { id: 'enc-6', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong2, encounter_type: 'counseling', encountered_at: daysAgo(45), member_note: D.encounters.careerTalk },
   // Peter Botros
-  { id: 'enc-7', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong3, encounter_type: 'confession', encountered_at: daysAgo(74), member_note: 'Reminded to attend Sunday Liturgy more consistently.' },
+  { id: 'enc-7', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong3, encounter_type: 'confession', encountered_at: daysAgo(74), member_note: D.encounters.liturgyReminder },
   // Nadia Henein
-  { id: 'enc-8', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong4, encounter_type: 'confession', encountered_at: daysAgo(22), member_note: 'Regular confession. Spiritual growth noted.' },
-  { id: 'enc-9', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong4, encounter_type: 'phone',      encountered_at: daysAgo(60), member_note: 'Called to check in about family situation.' },
+  { id: 'enc-8', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong4, encounter_type: 'confession', encountered_at: daysAgo(22), member_note: D.encounters.regularConfession },
+  { id: 'enc-9', priest_id: DEMO_IDS.priest, congregant_id: DEMO_IDS.cong4, encounter_type: 'phone',      encountered_at: daysAgo(60), member_note: D.encounters.familyCall },
 ];
 
 // ── Spiritual canons ──────────────────────────────────────────
 export const DUMMY_CANONS = [
   // Michael Hanna — active
-  { id: 'canon-1', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: 'Agpeya Morning Prayer', frequency: 'Daily',  active: true,  icon: '🙏', start_date: daysAgo(40), end_date: null,     reflection_prompt: 'Note one phrase that stayed with you.' },
-  { id: 'canon-2', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: 'Psalm 50 Reading',      frequency: 'Daily',  active: true,  icon: '📖', start_date: daysAgo(40), end_date: null,     reflection_prompt: null },
-  { id: 'canon-3', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: 'Almsgiving',            frequency: 'Weekly', active: true,  icon: '❤',  start_date: daysAgo(40), end_date: null,     reflection_prompt: null },
+  { id: 'canon-1', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: D.canons.agpeyaMorningPrayer, frequency: 'Daily',  active: true,  icon: '🙏', start_date: daysAgo(40), end_date: null,     reflection_prompt: D.reflectionPrompts.phrase },
+  { id: 'canon-2', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: D.canons.psalm50,      frequency: 'Daily',  active: true,  icon: '📖', start_date: daysAgo(40), end_date: null,     reflection_prompt: null },
+  { id: 'canon-3', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: D.canons.almsgiving,            frequency: 'Weekly', active: true,  icon: '❤',  start_date: daysAgo(40), end_date: null,     reflection_prompt: null },
   // Michael Hanna — inactive
-  { id: 'canon-4', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: 'Divine Liturgy Attendance', frequency: 'Weekly', active: false, icon: '✝︎', start_date: daysAgo(120), end_date: daysAgo(50), reflection_prompt: null },
+  { id: 'canon-4', congregant_id: DEMO_IDS.cong1, priest_id: DEMO_IDS.priest, component: D.canons.liturgyAttendance, frequency: 'Weekly', active: false, icon: '✝︎', start_date: daysAgo(120), end_date: daysAgo(50), reflection_prompt: null },
   // Sara Girgis
-  { id: 'canon-5', congregant_id: DEMO_IDS.cong2, priest_id: DEMO_IDS.priest, component: 'Evening Agpeya',        frequency: 'Daily',  active: true,  icon: '🌙', start_date: daysAgo(18), end_date: null, reflection_prompt: null },
-  { id: 'canon-6', congregant_id: DEMO_IDS.cong2, priest_id: DEMO_IDS.priest, component: 'Scripture Meditation',  frequency: 'Daily',  active: true,  icon: '📖', start_date: daysAgo(18), end_date: null, reflection_prompt: 'One verse that spoke to you today.' },
+  { id: 'canon-5', congregant_id: DEMO_IDS.cong2, priest_id: DEMO_IDS.priest, component: D.canons.eveningAgpeya,        frequency: 'Daily',  active: true,  icon: '🌙', start_date: daysAgo(18), end_date: null, reflection_prompt: null },
+  { id: 'canon-6', congregant_id: DEMO_IDS.cong2, priest_id: DEMO_IDS.priest, component: D.canons.scriptureMeditation,  frequency: 'Daily',  active: true,  icon: '📖', start_date: daysAgo(18), end_date: null, reflection_prompt: D.reflectionPrompts.verse },
   // Peter Botros
-  { id: 'canon-7', congregant_id: DEMO_IDS.cong3, priest_id: DEMO_IDS.priest, component: 'Morning Agpeya',        frequency: 'Daily',  active: true,  icon: '🙏', start_date: daysAgo(10), end_date: null, reflection_prompt: null },
+  { id: 'canon-7', congregant_id: DEMO_IDS.cong3, priest_id: DEMO_IDS.priest, component: D.canons.morningAgpeya,        frequency: 'Daily',  active: true,  icon: '🙏', start_date: daysAgo(10), end_date: null, reflection_prompt: null },
   // Nadia Henein
-  { id: 'canon-8', congregant_id: DEMO_IDS.cong4, priest_id: DEMO_IDS.priest, component: 'Fasting (Nineveh)',     frequency: 'Weekly', active: true,  icon: '🌿', start_date: daysAgo(30), end_date: null, reflection_prompt: null },
-  { id: 'canon-9', congregant_id: DEMO_IDS.cong4, priest_id: DEMO_IDS.priest, component: 'Service / Diakonia',   frequency: 'Weekly', active: true,  icon: '◇',  start_date: daysAgo(30), end_date: null, reflection_prompt: null },
+  { id: 'canon-8', congregant_id: DEMO_IDS.cong4, priest_id: DEMO_IDS.priest, component: D.canons.fastingNineveh,     frequency: 'Weekly', active: true,  icon: '🌿', start_date: daysAgo(30), end_date: null, reflection_prompt: null },
+  { id: 'canon-9', congregant_id: DEMO_IDS.cong4, priest_id: DEMO_IDS.priest, component: D.canons.service,   frequency: 'Weekly', active: true,  icon: '◇',  start_date: daysAgo(30), end_date: null, reflection_prompt: null },
 ];
 
 // ── Canon completions ─────────────────────────────────────────
@@ -134,26 +140,26 @@ export const DUMMY_PROGRESS: Record<string, Record<string, any>> = {
   [DEMO_IDS.cong1]: {
     vitals: { prayer: 65, scripture: 80, liturgy: 80, communion: 65, fasting: 90, service: 50 },
     'journal-disciplines': [
-      { id: 'disc-1', icon: '🙏', name: 'Morning Agpeya',       freq: 'daily',     streak: '5-day streak', shared: true,  done: true },
-      { id: 'disc-2', icon: '📖', name: 'Bible Reading',        freq: 'daily',     streak: '5-day streak', shared: true,  done: false },
-      { id: 'disc-3', icon: '🕯', name: 'Vespers',              freq: 'weekly',    streak: '3 this month', shared: true,  done: false },
-      { id: 'disc-4', icon: '✝︎', name: 'Divine Liturgy',       freq: 'weekly',    streak: '8/10 Sundays', shared: true,  done: true },
-      { id: 'disc-5', icon: '❤', name: 'Almsgiving',           freq: 'monthly',   streak: '',             shared: false, done: false },
-      { id: 'disc-6', icon: '🌿', name: 'Day of Prayer',        freq: 'quarterly', streak: '',             shared: true,  done: false },
+      { id: 'disc-1', icon: '🙏', name: D.disciplines.morningAgpeya,       freq: 'daily',     streak: D.streaks.fiveDays, shared: true,  done: true },
+      { id: 'disc-2', icon: '📖', name: D.disciplines.bibleReading,        freq: 'daily',     streak: D.streaks.fiveDays, shared: true,  done: false },
+      { id: 'disc-3', icon: '🕯', name: D.disciplines.vespers,              freq: 'weekly',    streak: D.streaks.threeThisMonth, shared: true,  done: false },
+      { id: 'disc-4', icon: '✝︎', name: D.disciplines.divineLiturgy,       freq: 'weekly',    streak: D.streaks.eightOfTenSundays, shared: true,  done: true },
+      { id: 'disc-5', icon: '❤', name: D.disciplines.almsgiving,           freq: 'monthly',   streak: '',             shared: false, done: false },
+      { id: 'disc-6', icon: '🌿', name: D.disciplines.dayOfPrayer,        freq: 'quarterly', streak: '',             shared: true,  done: false },
     ],
     'journal-entries': [
-      { id: 'je-1', created_at: daysAgo(1),  title: 'Reflection on Psalm 23',       reflection: 'The Lord is my shepherd — I noticed how this psalm pairs provision with peace.',   scripture: 'Psalm 23:1',   prayer_intention: 'For patience with my children.' },
-      { id: 'je-2', created_at: daysAgo(5),  title: 'After the Divine Liturgy',     reflection: 'The doxology of the Theotokos moved me unexpectedly today.',                     scripture: 'Luke 1:46-55', prayer_intention: 'For Mary Naguib and her family.' },
-      { id: 'je-3', created_at: daysAgo(12), title: 'Morning fast reflection',       reflection: 'Found it easier this week. Less food, more awareness.',                          scripture: 'Matthew 6:16', prayer_intention: 'For strength during the Apostles Fast.' },
+      { id: 'je-1', created_at: daysAgo(1),  title: D.journal.psalm23.title,       reflection: D.journal.psalm23.reflection,   scripture: D.journal.psalm23.scripture,   prayer_intention: D.journal.psalm23.prayerIntention },
+      { id: 'je-2', created_at: daysAgo(5),  title: D.journal.afterLiturgy.title,     reflection: D.journal.afterLiturgy.reflection,                     scripture: D.journal.afterLiturgy.scripture, prayer_intention: D.journal.afterLiturgy.prayerIntention },
+      { id: 'je-3', created_at: daysAgo(12), title: D.journal.morningFast.title,       reflection: D.journal.morningFast.reflection,                          scripture: D.journal.morningFast.scripture, prayer_intention: D.journal.morningFast.prayerIntention },
     ],
     'pastoral-notes-self': null,
   },
   [DEMO_IDS.cong2]: {
     vitals: { prayer: 90, scripture: 88, liturgy: 95, communion: 80, fasting: 75, service: 60 },
     'journal-disciplines': [
-      { id: 'disc-a', icon: '🙏', name: 'Evening Prayer',   freq: 'daily',  streak: '12-day streak', shared: true,  done: true },
-      { id: 'disc-b', icon: '📖', name: 'Daily Scripture',  freq: 'daily',  streak: '12-day streak', shared: true,  done: true },
-      { id: 'disc-c', icon: '✝︎', name: 'Sunday Liturgy',   freq: 'weekly', streak: '10/10 Sundays', shared: true,  done: false },
+      { id: 'disc-a', icon: '🙏', name: D.disciplines.eveningPrayer,   freq: 'daily',  streak: D.streaks.twelveDays, shared: true,  done: true },
+      { id: 'disc-b', icon: '📖', name: D.disciplines.dailyScripture,  freq: 'daily',  streak: D.streaks.twelveDays, shared: true,  done: true },
+      { id: 'disc-c', icon: '✝︎', name: D.disciplines.sundayLiturgy,   freq: 'weekly', streak: D.streaks.tenOfTenSundays, shared: true,  done: false },
     ],
     'journal-entries': [],
   },
@@ -165,18 +171,18 @@ export const DUMMY_PROGRESS: Record<string, Record<string, any>> = {
   [DEMO_IDS.cong4]: {
     vitals: { prayer: 85, scripture: 75, liturgy: 90, communion: 75, fasting: 80, service: 70 },
     'journal-disciplines': [
-      { id: 'disc-d', icon: '🙏', name: 'Agpeya (3 hours)',  freq: 'daily',   streak: '20-day streak', shared: true, done: true },
-      { id: 'disc-e', icon: '🌿', name: 'Fasting',           freq: 'weekly',  streak: 'Every Wed+Fri', shared: true, done: false },
+      { id: 'disc-d', icon: '🙏', name: D.disciplines.agpeyaThreeHours,  freq: 'daily',   streak: D.streaks.twentyDays, shared: true, done: true },
+      { id: 'disc-e', icon: '🌿', name: D.disciplines.fasting,           freq: 'weekly',  streak: D.streaks.everyWedFri, shared: true, done: false },
     ],
     'journal-entries': [],
   },
   // Priest pastoral notes per member
   [`${DEMO_IDS.priest}-pastoral-notes-${DEMO_IDS.cong1}`]: {
-    text: 'Michael is growing steadily. New father — pray for him as he navigates family life. Assigned 40-day Psalm plan after May confession. Follow up in August.',
+    text: D.pastoralNotes.michael,
     updated_at: daysAgo(47),
   },
   [`${DEMO_IDS.priest}-pastoral-notes-${DEMO_IDS.cong3}`]: {
-    text: 'Peter is struggling with attendance. Second missed appointment. Needs gentle but firm follow-up. Consider involving servant.',
+    text: D.pastoralNotes.peter,
     updated_at: daysAgo(10),
   },
 };

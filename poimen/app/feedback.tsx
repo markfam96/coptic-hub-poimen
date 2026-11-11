@@ -23,11 +23,14 @@ import { Card } from '@/components/ui/Card';
 import * as db from '@/lib/db';
 import type { FeedbackCategory, Feedback } from '@/lib/db/feedback';
 import * as H from '@/lib/haptics';
+import { S, fmt, plural, fmtDate, GLYPH } from '@/lib/i18n';
+
+const T = S.feedback;
 
 const CATEGORIES: { value: FeedbackCategory; label: string; hint: string }[] = [
-  { value: 'bug',   label: 'Something is broken', hint: 'What were you doing when it went wrong?' },
-  { value: 'idea',  label: 'An idea',             hint: 'What would you like the app to do?' },
-  { value: 'other', label: 'Something else',      hint: 'Anything you want to tell us.' },
+  { value: 'bug',   label: T.categories.bug.label,   hint: T.categories.bug.hint },
+  { value: 'idea',  label: T.categories.idea.label,  hint: T.categories.idea.hint },
+  { value: 'other', label: T.categories.other.label, hint: T.categories.other.hint },
 ];
 
 const MAX = 2000;
@@ -90,25 +93,25 @@ export default function FeedbackScreen() {
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
           <TouchableOpacity style={styles.backRow} onPress={() => goBack('/profile')}>
-            <Text style={styles.backArrow}>‹</Text>
-            <Text style={styles.backText}>Back</Text>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{S.common.back}</Text>
           </TouchableOpacity>
 
           <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
-          <Text style={styles.title}>Send Feedback</Text>
+          <Text style={styles.title}>{T.title}</Text>
 
           {sent ? (
-            <Card title="Thank you" titleIcon="✦">
+            <Card title={T.thanksTitle} titleIcon="✦">
               <Text style={styles.body}>
-                Your message has been sent. We read everything, though we can't always reply.
+                {T.thanksBody}
               </Text>
               <TouchableOpacity style={styles.againBtn} onPress={() => { H.tap(); setSent(false); }}>
-                <Text style={styles.againText}>Send something else</Text>
+                <Text style={styles.againText}>{T.sendAnother}</Text>
               </TouchableOpacity>
             </Card>
           ) : (
             <Card title="" titleIcon="">
-              <Text style={styles.label}>What kind of feedback is this?</Text>
+              <Text style={styles.label}>{T.kindLabel}</Text>
               <View style={styles.chipRow}>
                 {CATEGORIES.map(c => (
                   <Chip key={c.value} label={c.label} on={category === c.value}
@@ -121,12 +124,12 @@ export default function FeedbackScreen() {
                 style={styles.input}
                 value={message}
                 onChangeText={t => setMessage(t.slice(0, MAX))}
-                placeholder="Type as much or as little as you like…"
+                placeholder={T.placeholder}
                 placeholderTextColor={colors.faint}
                 multiline
                 textAlignVertical="top"
               />
-              <Text style={styles.counter}>{remaining} characters left</Text>
+              <Text style={styles.counter}>{plural(T.charactersLeft, remaining)}</Text>
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -136,32 +139,30 @@ export default function FeedbackScreen() {
                 onPress={send}
                 activeOpacity={0.85}
               >
-                <Text style={styles.sendText}>{sending ? 'Sending…' : 'Send'}</Text>
+                <Text style={styles.sendText}>{sending ? T.sending : S.common.send}</Text>
               </TouchableOpacity>
             </Card>
           )}
 
           {/* Said plainly rather than buried: who can read this, and what rides
               along with it. */}
-          <Card title="What gets sent" titleIcon="🔒">
+          <Card title={T.whatGetsSent.title} titleIcon="🔒">
             <Text style={styles.body}>
-              Your message goes to the people who build {APP_NAME}. It is
-              <Text style={styles.strong}> not visible to your Father of Confession</Text>, your
-              servant, or anyone at your church.
+              {fmt(T.whatGetsSent.bodyBefore, { app: APP_NAME })}
+              <Text style={styles.strong}>{T.whatGetsSent.bodyStrong}</Text>{T.whatGetsSent.bodyAfter}
             </Text>
             <View style={styles.ctxBox}>
-              <Text style={styles.ctxRow}>App version · {context.app_version ?? 'unknown'}</Text>
-              <Text style={styles.ctxRow}>Platform · {context.platform}</Text>
-              <Text style={styles.ctxRow}>Your role · {context.role ?? 'not set'}</Text>
+              <Text style={styles.ctxRow}>{fmt(T.whatGetsSent.version, { value: context.app_version ?? T.whatGetsSent.unknown })}</Text>
+              <Text style={styles.ctxRow}>{fmt(T.whatGetsSent.platform, { value: context.platform })}</Text>
+              <Text style={styles.ctxRow}>{fmt(T.whatGetsSent.role, { value: context.role != null ? (T.whatGetsSent.roles[context.role] ?? context.role) : T.whatGetsSent.notSet })}</Text>
             </View>
             <Text style={styles.bodySmall}>
-              Nothing else is attached — not your location, not your journal, confession, or
-              prayer entries.
+              {T.whatGetsSent.nothingElse}
             </Text>
           </Card>
 
           {mine && mine.length > 0 && (
-            <Card title={`What you've sent (${mine.length})`} flat>
+            <Card title={fmt(T.history.title, { n: mine.length })} flat>
               {mine.map(f => (
                 <View key={f.id} style={styles.pastRow}>
                   <View style={styles.pastHead}>
@@ -169,12 +170,12 @@ export default function FeedbackScreen() {
                       {CATEGORIES.find(c => c.value === f.category)?.label ?? f.category}
                     </Text>
                     <Text style={[styles.pastStatus, f.status === 'resolved' && { color: colors.green }]}>
-                      {f.status === 'new' ? 'Sent' : f.status === 'read' ? 'Read' : 'Resolved'}
+                      {f.status === 'new' ? T.history.statusSent : f.status === 'read' ? T.history.statusRead : T.history.statusResolved}
                     </Text>
                   </View>
                   <Text style={styles.pastMsg} numberOfLines={3}>{f.message}</Text>
                   <Text style={styles.pastDate}>
-                    {new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {fmtDate(new Date(f.created_at), { month: 'short', day: 'numeric', year: 'numeric' })}
                   </Text>
                 </View>
               ))}

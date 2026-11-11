@@ -27,9 +27,21 @@ import { ChurchField, ChurchPicker } from '@/components/ChurchPicker';
 import { type ChurchChoice, churchChoiceToFields } from '@/lib/church-choice';
 import { seal, openContactSelf, openChildrenSelf, needsSealing } from '@/lib/pastoral-secure';
 import type { ContactData, ChildData, OpenedChild } from '@/lib/pastoral-secure';
+import { S, fmt, plural, GLYPH } from '@/lib/i18n';
+import { LanguageSwitch } from '@/components/ui/LanguageSwitch';
+
+const T = S.profile;
 
 const LIFE_STAGES = ['single', 'engaged', 'married', 'widowed', 'divorced'] as const;
 type LifeStageType = typeof LIFE_STAGES[number];
+
+// The role is stored and compared in English; only the badge's label is translated.
+const ROLE_LABELS: Record<string, string> = {
+  congregant: S.common.roleCongregant,
+  servant: S.common.roleServant,
+  priest: S.common.rolePriest,
+  admin: S.common.roleAdmin,
+};
 
 interface ChildRow {
   id?: string;
@@ -89,7 +101,7 @@ export default function ProfileScreen() {
       const { DevSettings } = require('react-native');
       DevSettings.reload();
     } catch {
-      Alert.alert('Theme saved', 'Close and reopen the app to apply the new appearance.');
+      Alert.alert(T.appearance.savedTitle, T.appearance.savedBody);
     }
   }
 
@@ -209,7 +221,7 @@ export default function ProfileScreen() {
     setAccountError('');
     const { error } = await db.updateAccount(user.id, { full_name: fullName.trim(), church_name: churchName.trim(), church_id: churchId });
     setSaving(false);
-    if (error) { setAccountError('Failed to save — please try again.'); return; }
+    if (error) { setAccountError(T.saveFailed); return; }
     setSaved(true);
     // Home's church strip reads the profile in context; without this it would
     // keep asking until the next launch.
@@ -297,7 +309,7 @@ export default function ProfileScreen() {
       updated_at: new Date().toISOString(),
     });
     setSavingContact(false);
-    if (error) { setContactError('Failed to save — please try again.'); return; }
+    if (error) { setContactError(T.saveFailed); return; }
     setSavedContact(true);
     setTimeout(() => setSavedContact(false), 2000);
   }
@@ -313,7 +325,7 @@ export default function ProfileScreen() {
       spouse_name: showSpouse ? (spouseName.trim() || null) : null,
       updated_at:  new Date().toISOString(),
     });
-    if (lifeErr) { setSavingFamily(false); setFamilyError('Failed to save — please try again.'); return; }
+    if (lifeErr) { setSavingFamily(false); setFamilyError(T.saveFailed); return; }
     // Replace children: delete all then re-insert current list
     await db.deleteChildren(user.id);
     if (children.length > 0) {
@@ -327,7 +339,7 @@ export default function ProfileScreen() {
           updated_at: new Date().toISOString(),
         })))
       );
-      if (kidsErr) { setSavingFamily(false); setFamilyError('Failed to save children — please try again.'); return; }
+      if (kidsErr) { setSavingFamily(false); setFamilyError(T.saveChildrenFailed); return; }
     }
     setSavingFamily(false);
     setSavedFamily(true);
@@ -348,9 +360,9 @@ export default function ProfileScreen() {
       await signOut();
       router.replace('/sign-in');
     } else {
-      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); } },
+      Alert.alert(T.signOut.confirmTitle, T.signOut.confirmBody, [
+        { text: S.common.cancel, style: 'cancel' },
+        { text: T.signOut.confirmButton, style: 'destructive', onPress: async () => { await signOut(); } },
       ]);
     }
   }
@@ -374,9 +386,9 @@ export default function ProfileScreen() {
       const base64 = await pickPhoto(source);
       if (!base64) return;   // denied or cancelled
       const { url, error } = await uploadAvatarImage(selfAvatarPath(user.id), base64);
-      if (!url) { setPhotoError(`Couldn't upload: ${error}`); return; }
+      if (!url) { setPhotoError(fmt(T.photo.uploadFailed, { error: String(error) })); return; }
       const { error: dbErr } = await db.setAvatarUrl(user.id, url);
-      if (dbErr) setPhotoError(`Couldn't save: ${dbErr}`);
+      if (dbErr) setPhotoError(fmt(T.photo.saveFailed, { error: String(dbErr) }));
       await refreshProfile();
     } finally {
       setPhotoBusy(false);
@@ -385,7 +397,7 @@ export default function ProfileScreen() {
 
   function removePhoto() {
     if (demoMode || !user) return;
-    confirmDestructive('Remove photo', 'Remove your profile picture?', 'Remove', async () => {
+    confirmDestructive(T.photo.removeTitle, T.photo.removeBody, S.common.remove, async () => {
       setPhotoBusy(true);
       await removeAvatarImage(selfAvatarPath(user.id));
       await db.setAvatarUrl(user.id, null);
@@ -407,8 +419,8 @@ export default function ProfileScreen() {
         automaticallyAdjustKeyboardInsets
       >
         <TouchableOpacity style={styles.backRow} onPress={() => goBack('/(tabs)')}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>Home</Text>
+          <Text style={styles.backArrow}>{GLYPH.back}</Text>
+          <Text style={styles.backText}>{T.back}</Text>
         </TouchableOpacity>
 
         {/* ── Avatar ── */}
@@ -417,15 +429,15 @@ export default function ProfileScreen() {
           {!demoMode && user && <View style={styles.photoChipRow}>
             {cameraAvailable && (
               <TouchableOpacity style={styles.photoChip} onPress={() => changePhoto('camera')} disabled={photoBusy}>
-                <Text style={styles.photoChipText}>◉ Camera</Text>
+                <Text style={styles.photoChipText}>{T.photo.camera}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.photoChip} onPress={() => changePhoto('library')} disabled={photoBusy}>
-              <Text style={styles.photoChipText}>{profile?.avatar_url ? '▤ Change Photo' : '▤ Add Photo'}</Text>
+              <Text style={styles.photoChipText}>{profile?.avatar_url ? T.photo.change : T.photo.add}</Text>
             </TouchableOpacity>
             {!!profile?.avatar_url && (
               <TouchableOpacity style={styles.photoChip} onPress={removePhoto} disabled={photoBusy}>
-                <Text style={[styles.photoChipText, { color: colors.red }]}>✕ Remove</Text>
+                <Text style={[styles.photoChipText, { color: colors.red }]}>{T.photo.remove}</Text>
               </TouchableOpacity>
             )}
           </View>}
@@ -434,36 +446,36 @@ export default function ProfileScreen() {
           <Text style={styles.avatarName}>{profile?.full_name ?? '—'}</Text>
           <Text style={styles.avatarEmail}>{user?.email}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{profile?.role ?? 'congregant'}</Text>
+            <Text style={styles.roleBadgeText}>{ROLE_LABELS[profile?.role ?? 'congregant'] ?? profile?.role}</Text>
           </View>
         </View>
 
         {/* ── Account Details ── */}
-        <Card title="Account Details" titleIcon="◈">
+        <Card title={T.account.title} titleIcon="◈">
           <View style={styles.field}>
-            <Text style={styles.label}>Full Name</Text>
+            <Text style={styles.label}>{T.account.fullName}</Text>
             <TextInput
               style={styles.input}
               value={fullName}
               onChangeText={setFullName}
-              placeholder="Your name"
+              placeholder={T.account.fullNamePlaceholder}
               placeholderTextColor={colors.faint}
               autoCapitalize="words"
             />
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{T.account.email}</Text>
             <View style={styles.inputReadOnly}>
               <Text style={styles.inputReadOnlyText}>{user?.email}</Text>
             </View>
-            <Text style={styles.fieldHint}>Email cannot be changed here. Contact support.</Text>
+            <Text style={styles.fieldHint}>{T.account.emailHint}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Church</Text>
+            <Text style={styles.label}>{T.account.church}</Text>
             <ChurchField
               value={churchChoice}
               status={list.status}
-              placeholder="Select your church…"
+              placeholder={T.account.churchPlaceholder}
               style={styles.churchPicker}
               textSize={14}
               onPress={() => setPickerOpen(true)}
@@ -477,51 +489,51 @@ export default function ProfileScreen() {
           >
             {saving
               ? <ActivityIndicator color={colors.navy} />
-              : <Text style={styles.saveBtnText}>{saved ? '✓ SAVED' : 'SAVE CHANGES'}</Text>
+              : <Text style={styles.saveBtnText}>{saved ? T.savedBadge : T.account.save}</Text>
             }
           </TouchableOpacity>
         </Card>
 
         {/* ── Contact for Visitation ── */}
-        <Card title="Contact for Visitation" titleIcon="◎">
-          <Text style={styles.sectionHint}>Shared only with your Father of Confession.</Text>
+        <Card title={T.contact.title} titleIcon="◎">
+          <Text style={styles.sectionHint}>{T.sharedWithFocOnly}</Text>
           <View style={styles.field}>
-            <Text style={styles.label}>Phone</Text>
+            <Text style={styles.label}>{T.contact.phone}</Text>
             <TextInput
               style={styles.input}
               value={phone}
               onChangeText={setPhone}
-              placeholder="(555) 000-0000"
+              placeholder={T.contact.phonePlaceholder}
               placeholderTextColor={colors.faint}
               keyboardType="phone-pad"
             />
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Contact Email</Text>
+            <Text style={styles.label}>{T.contact.email}</Text>
             <TextInput
               style={styles.input}
               value={contactEmail}
               onChangeText={setContactEmail}
-              placeholder="preferred@email.com"
+              placeholder={T.contact.emailPlaceholder}
               placeholderTextColor={colors.faint}
               keyboardType="email-address"
               autoCapitalize="none"
             />
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Address</Text>
+            <Text style={styles.label}>{T.contact.address}</Text>
             <TextInput
               style={[styles.input, { marginBottom: 8 }]}
               value={addressLine1}
               onChangeText={setAddressLine1}
-              placeholder="Street address"
+              placeholder={T.contact.street}
               placeholderTextColor={colors.faint}
             />
             <TextInput
               style={[styles.input, { marginBottom: 8 }]}
               value={addressLine2}
               onChangeText={setAddressLine2}
-              placeholder="Apt, suite, etc. (optional)"
+              placeholder={T.contact.line2}
               placeholderTextColor={colors.faint}
             />
             <View style={styles.addressRow}>
@@ -529,14 +541,14 @@ export default function ProfileScreen() {
                 style={[styles.input, { flex: 2 }]}
                 value={city}
                 onChangeText={setCity}
-                placeholder="City"
+                placeholder={T.contact.city}
                 placeholderTextColor={colors.faint}
               />
               <TextInput
                 style={[styles.input, { flex: 1 }]}
                 value={stateVal}
                 onChangeText={setStateVal}
-                placeholder="ST"
+                placeholder={T.contact.state}
                 placeholderTextColor={colors.faint}
                 autoCapitalize="characters"
                 maxLength={2}
@@ -545,7 +557,7 @@ export default function ProfileScreen() {
                 style={[styles.input, { flex: 1 }]}
                 value={zip}
                 onChangeText={setZip}
-                placeholder="ZIP"
+                placeholder={T.contact.zip}
                 placeholderTextColor={colors.faint}
                 keyboardType="numeric"
                 maxLength={10}
@@ -555,7 +567,7 @@ export default function ProfileScreen() {
               style={[styles.input, { marginTop: 8 }]}
               value={country}
               onChangeText={setCountry}
-              placeholder="Country (US)"
+              placeholder={T.contact.country}
               placeholderTextColor={colors.faint}
               autoCapitalize="characters"
               maxLength={2}
@@ -569,16 +581,16 @@ export default function ProfileScreen() {
           >
             {savingContact
               ? <ActivityIndicator color={colors.navy} />
-              : <Text style={styles.saveBtnText}>{savedContact ? '✓ SAVED' : 'SAVE CONTACT'}</Text>
+              : <Text style={styles.saveBtnText}>{savedContact ? T.savedBadge : T.contact.save}</Text>
             }
           </TouchableOpacity>
         </Card>
 
         {/* ── Life Stage & Family ── */}
-        <Card title="Life Stage & Family" titleIcon="✦">
-          <Text style={styles.sectionHint}>Shared only with your Father of Confession.</Text>
+        <Card title={T.family.title} titleIcon="✦">
+          <Text style={styles.sectionHint}>{T.sharedWithFocOnly}</Text>
 
-          <Text style={styles.label}>Life Stage</Text>
+          <Text style={styles.label}>{T.family.lifeStage}</Text>
           <View style={styles.stageRow}>
             {LIFE_STAGES.map(s => (
               <TouchableOpacity
@@ -587,7 +599,7 @@ export default function ProfileScreen() {
                 onPress={() => setLifeStage(prev => prev === s ? null : s)}
               >
                 <Text style={[styles.stagePillText, lifeStage === s && styles.stagePillTextActive]}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {T.family.stages[s]}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -595,12 +607,12 @@ export default function ProfileScreen() {
 
           {showSpouseField && (
             <View style={[styles.field, { marginTop: 16 }]}>
-              <Text style={styles.label}>Spouse's Name</Text>
+              <Text style={styles.label}>{T.family.spouseName}</Text>
               <TextInput
                 style={styles.input}
                 value={spouseName}
                 onChangeText={setSpouseName}
-                placeholder="Full name"
+                placeholder={T.family.spousePlaceholder}
                 placeholderTextColor={colors.faint}
                 autoCapitalize="words"
               />
@@ -608,15 +620,15 @@ export default function ProfileScreen() {
           )}
 
           <View style={[styles.field, { marginTop: 16 }]}>
-            <Text style={styles.label}>Children</Text>
+            <Text style={styles.label}>{T.family.children}</Text>
             {children.length === 0 ? (
-              <Text style={styles.emptyChildText}>No children added yet.</Text>
+              <Text style={styles.emptyChildText}>{T.family.noChildren}</Text>
             ) : (
               children.map((child, i) => (
                 <View key={i} style={styles.childRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.childName}>{child.name}</Text>
-                    <Text style={styles.childMeta}>b. {child.birth_year} · ~{currentYear - child.birth_year} yrs old</Text>
+                    <Text style={styles.childMeta}>{plural(T.family.childMeta, currentYear - child.birth_year, { year: child.birth_year })}</Text>
                   </View>
                   <TouchableOpacity style={styles.childRemoveBtn} onPress={() => setChildren(prev => prev.filter((_, idx) => idx !== i))}>
                     <Text style={styles.childRemoveText}>✕</Text>
@@ -629,7 +641,7 @@ export default function ProfileScreen() {
                 style={[styles.input, { flex: 2 }]}
                 value={newChildName}
                 onChangeText={setNewChildName}
-                placeholder="Name"
+                placeholder={T.family.childName}
                 placeholderTextColor={colors.faint}
                 autoCapitalize="words"
               />
@@ -637,7 +649,7 @@ export default function ProfileScreen() {
                 style={[styles.input, { flex: 1 }]}
                 value={newChildYear}
                 onChangeText={setNewChildYear}
-                placeholder="Year"
+                placeholder={T.family.childYear}
                 placeholderTextColor={colors.faint}
                 keyboardType="numeric"
                 maxLength={4}
@@ -647,7 +659,7 @@ export default function ProfileScreen() {
                 onPress={handleAddChild}
                 disabled={!canAddChild}
               >
-                <Text style={styles.addChildBtnText}>ADD</Text>
+                <Text style={styles.addChildBtnText}>{T.family.addChild}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -660,17 +672,17 @@ export default function ProfileScreen() {
           >
             {savingFamily
               ? <ActivityIndicator color={colors.navy} />
-              : <Text style={styles.saveBtnText}>{savedFamily ? '✓ SAVED' : 'SAVE FAMILY'}</Text>
+              : <Text style={styles.saveBtnText}>{savedFamily ? T.savedBadge : T.family.save}</Text>
             }
           </TouchableOpacity>
         </Card>
 
         {/* ── Appearance ── */}
-        <Card title="Appearance" titleIcon="◐">
+        <Card title={T.appearance.title} titleIcon="◐">
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {([
-              { mode: 'dark' as ThemeMode, label: 'Dark Mode' },
-              { mode: 'light' as ThemeMode, label: 'Light Mode' },
+              { mode: 'dark' as ThemeMode, label: T.appearance.dark },
+              { mode: 'light' as ThemeMode, label: T.appearance.light },
             ]).map(opt => (
               <TouchableOpacity
                 key={opt.mode}
@@ -682,53 +694,50 @@ export default function ProfileScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontFamily: fonts.latoBold, fontSize: 13, color: themeMode === opt.mode ? colors.goldLight : colors.muted }}>
+                <Text style={[styles.themeLabel, { color: themeMode === opt.mode ? colors.goldLight : colors.muted }]}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={{ fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 10, lineHeight: 16 }}>
-            Dark mode is Nepsis's navy and gold; light mode is a bright Byzantine palette —
-            warm parchment, sepia ink, and liturgical crimson. Switching reloads the app.
-          </Text>
+          <Text style={styles.settingNote}>{T.appearance.note}</Text>
+        </Card>
+
+        {/* ── Language ── */}
+        <Card title={T.language.title} titleIcon="◉">
+          <LanguageSwitch />
+          <Text style={styles.settingNote}>{T.language.note}</Text>
         </Card>
 
         {/* ── Your data & privacy ── */}
         <Card title={PRIVACY_COPY.settingsTitle} titleIcon="✦">
           <Text style={styles.privacyText}>{PRIVACY_COPY.settingsSummary}</Text>
           <TouchableOpacity onPress={() => router.push('/privacy')}>
-            <Text style={styles.privacyLink}>Read the full privacy policy →</Text>
+            <Text style={styles.privacyLink}>{T.privacy.readPolicy}</Text>
           </TouchableOpacity>
         </Card>
 
         {/* ── Reminders ── */}
-        <Card title="Reminders" titleIcon="◷">
-          <Text style={styles.privacyText}>
-            A nudge for your canon and your psalms, at a time you pick. Written by this phone
-            rather than sent to it — nothing about your rule leaves the device to make one happen.
-          </Text>
+        <Card title={T.reminders.title} titleIcon="◷">
+          <Text style={styles.privacyText}>{T.reminders.body}</Text>
           <TouchableOpacity style={styles.feedbackBtn} onPress={() => { H.tap(); router.push('/reminders'); }} activeOpacity={0.85}>
-            <Text style={styles.feedbackBtnText}>Set up reminders</Text>
+            <Text style={styles.feedbackBtnText}>{T.reminders.button}</Text>
           </TouchableOpacity>
         </Card>
 
         {/* ── Feedback ── */}
-        <Card title="Feedback" titleIcon="✎">
-          <Text style={styles.privacyText}>
-            Something broken, or an idea for the app? Tell us directly — it goes to the people who
-            build Nepsis, not to your Father of Confession or your church.
-          </Text>
+        <Card title={T.feedback.title} titleIcon="✎">
+          <Text style={styles.privacyText}>{T.feedback.body}</Text>
           <TouchableOpacity style={styles.feedbackBtn} onPress={() => { H.tap(); router.push('/feedback'); }} activeOpacity={0.85}>
-            <Text style={styles.feedbackBtnText}>Send feedback</Text>
+            <Text style={styles.feedbackBtnText}>{T.feedback.button}</Text>
           </TouchableOpacity>
         </Card>
 
         {/* Invite code — shown to priests and servants */}
         {(profile?.role === 'priest' || profile?.role === 'servant' || profile?.role === 'admin') && profile?.invite_code && (
-          <Card title="Your Invite Code" titleIcon="◈">
+          <Card title={T.invite.title} titleIcon="◈">
             <Text style={styles.inviteCodeLabel}>
-              Share this code with {profile.role === 'servant' ? 'your students' : 'your congregants'} so they can link to you in their app.
+              {profile.role === 'servant' ? T.invite.shareServant : T.invite.sharePriest}
             </Text>
             <View style={styles.inviteCodeBox}>
               <Text style={styles.inviteCode}>{profile.invite_code}</Text>
@@ -738,22 +747,22 @@ export default function ProfileScreen() {
 
         {/* FOC linking — shown to congregants and admins */}
         {(profile?.role === 'congregant' || profile?.role === 'admin' || !profile?.role) && (
-          <Card title="Father of Confession" titleIcon="✝︎">
+          <Card title={T.foc.title} titleIcon="✝︎">
             {profile?.foc_id ? (
               <>
                 <View style={styles.linkedRow}>
                   <View>
-                    <Text style={styles.linkedName}>✓ Linked</Text>
+                    <Text style={styles.linkedName}>{T.foc.linked}</Text>
                     {focName ? <Text style={styles.focNameText}>{focName}</Text> : null}
                   </View>
                   <TouchableOpacity onPress={() => router.push({ pathname: '/link-to-foc', params: { type: 'foc' } })}>
-                    <Text style={styles.relinkText}>Change</Text>
+                    <Text style={styles.relinkText}>{S.common.change}</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.vitalsToggleRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.vitalsToggleLabel}>Share vitals with my FOC</Text>
-                    <Text style={styles.vitalsToggleHint}>Allows your priest to see your spiritual vitals</Text>
+                    <Text style={styles.vitalsToggleLabel}>{T.foc.shareVitals}</Text>
+                    <Text style={styles.vitalsToggleHint}>{T.foc.shareVitalsHint}</Text>
                   </View>
                   <Switch
                     value={profile?.vitals_consent === true}
@@ -773,7 +782,7 @@ export default function ProfileScreen() {
                 style={styles.linkBtn}
                 onPress={() => router.push({ pathname: '/link-to-foc', params: { type: 'foc' } })}
               >
-                <Text style={styles.linkBtnText}>LINK TO FATHER OF CONFESSION</Text>
+                <Text style={styles.linkBtnText}>{T.foc.link}</Text>
               </TouchableOpacity>
             )}
           </Card>
@@ -781,12 +790,12 @@ export default function ProfileScreen() {
 
         {/* Servant linking — shown to congregants */}
         {(profile?.role === 'congregant' || !profile?.role) && (
-          <Card title="Sunday School Servant" titleIcon="◇">
+          <Card title={T.servant.title} titleIcon="◇">
             {profile?.servant_id ? (
               <View style={styles.linkedRow}>
-                <Text style={styles.linkedName}>✓ Linked</Text>
+                <Text style={styles.linkedName}>{T.servant.linked}</Text>
                 <TouchableOpacity onPress={() => router.push({ pathname: '/link-to-foc', params: { type: 'servant' } })}>
-                  <Text style={styles.relinkText}>Change</Text>
+                  <Text style={styles.relinkText}>{S.common.change}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -794,21 +803,21 @@ export default function ProfileScreen() {
                 style={styles.linkBtn}
                 onPress={() => router.push({ pathname: '/link-to-foc', params: { type: 'servant' } })}
               >
-                <Text style={styles.linkBtnText}>LINK TO SUNDAY SCHOOL SERVANT</Text>
+                <Text style={styles.linkBtnText}>{T.servant.link}</Text>
               </TouchableOpacity>
             )}
           </Card>
         )}
 
         <TouchableOpacity style={styles.tutorialBtn} onPress={() => resetAndStartTutorial(effectiveRole)}>
-          <Text style={styles.tutorialBtnText}>View App Tutorial</Text>
+          <Text style={styles.tutorialBtnText}>{T.tutorial}</Text>
         </TouchableOpacity>
 
         {faceIdAvailable && (
           <View style={styles.demoRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.demoLabel}>Face ID Lock</Text>
-              <Text style={styles.demoSub}>Require Face ID to open the app</Text>
+              <Text style={styles.demoLabel}>{T.faceId.label}</Text>
+              <Text style={styles.demoSub}>{T.faceId.hint}</Text>
             </View>
             <Switch
               value={faceIdEnabled}
@@ -822,8 +831,8 @@ export default function ProfileScreen() {
         {/* Demo mode toggle */}
         <View style={styles.demoRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.demoLabel}>Demo Mode</Text>
-            <Text style={styles.demoSub}>Shows sample data — no Supabase required</Text>
+            <Text style={styles.demoLabel}>{T.demo.label}</Text>
+            <Text style={styles.demoSub}>{T.demo.hint}</Text>
           </View>
           <Switch
             value={demoMode}
@@ -834,12 +843,12 @@ export default function ProfileScreen() {
         </View>
 
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Text style={styles.signOutText}>{T.signOut.button}</Text>
         </TouchableOpacity>
 
         {!demoMode && (
           <TouchableOpacity style={styles.deleteAccountLink} onPress={() => router.push('/delete-account')}>
-            <Text style={styles.deleteAccountText}>Delete my account</Text>
+            <Text style={styles.deleteAccountText}>{T.deleteAccount}</Text>
           </TouchableOpacity>
         )}
 
@@ -939,6 +948,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   feedbackBtnText: { fontFamily: fonts.latoBold, fontSize: 12, letterSpacing: 0.4, color: colors.gold },
   privacyLink: { fontFamily: fonts.latoBold, fontSize: 12, color: colors.gold, marginTop: 12 },
   privacyText: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, lineHeight: 20 },
+  themeLabel: { fontFamily: fonts.latoBold, fontSize: 13 },
+  // The line under the Appearance and Language switches.
+  settingNote: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 10, lineHeight: 16 },
 
   tutorialBtn: {
     borderWidth: 1, borderColor: colors.border,

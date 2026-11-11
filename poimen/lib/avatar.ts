@@ -10,6 +10,7 @@
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
+import { S } from './i18n';
 
 export type PhotoSource = 'camera' | 'library';
 
@@ -72,7 +73,7 @@ export async function uploadAvatarImage(
 ): Promise<{ url: string | null; error: string | null }> {
   try {
     const bytes = base64ToBytes(base64);
-    if (bytes.length === 0) return { url: null, error: 'Empty image' };
+    if (bytes.length === 0) return { url: null, error: S.servant.data.emptyImage };
     const { error } = await supabase.storage
       .from('avatars')
       .upload(path, bytes, { contentType: 'image/jpeg', upsert: true });

@@ -30,6 +30,9 @@ export const STRUCTURED_CATEGORIES: AssignedCategory[] = [
   'agpeya_hours', 'services', 'heart_of_service',
 ];
 
+// English on purpose, in every language: this label is written into the
+// `component` text saved with an assignment or a template, so it is stored
+// data. The name shown on screen is S.canonEditor.categories[category].
 export const CATEGORY_LABEL: Record<AssignedCategory, string> = {
   prostrations:     'Prostrations',
   quiet:            'Quiet time',

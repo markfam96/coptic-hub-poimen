@@ -107,13 +107,25 @@ const MONTHS: Record<string, number> = {
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
 
+// What a date field holds when the app is in Arabic: fmtDate (lib/i18n) prints
+// "9 نوفمبر 2026", and a person may type Eastern Arabic digits. The month names
+// are the Egyptian ones, matched with the hamza dropped (أبريل / إبريل / ابريل).
+// This is what the parser accepts, not text that is shown.
+const AR_MONTHS: Record<string, number> = {
+  'يناير': 0, 'فبراير': 1, 'مارس': 2, 'ابريل': 3, 'مايو': 4, 'يونيو': 5, 'يونيه': 5,
+  'يوليو': 6, 'يوليه': 6, 'اغسطس': 7, 'سبتمبر': 8, 'اكتوبر': 9, 'نوفمبر': 10, 'ديسمبر': 11,
+};
+const EASTERN_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+// Direction marks that a formatted or pasted date can carry.
+const BIDI_MARKS = /[\u200E\u200F\u061C]/g;
+
 // Hermes (React Native's engine) cannot parse human date strings like
 // "Jul 21, 2026" via `new Date(str)` — it returns Invalid Date, which silently
 // blocked date-field saves on device (they only "worked" in a browser). Parse
 // the formats our date inputs actually produce/accept ourselves, anchored at
 // local noon so day math never slips a day. Returns null if unparseable.
 export function parseLocalDate(input: string): Date | null {
-  const s = input.trim();
+  const s = input.replace(BIDI_MARKS, '').replace(/[٠-٩]/g, d => String(EASTERN_DIGITS.indexOf(d))).trim();
   if (!s) return null;
   // "Mon DD, YYYY" / "Month DD YYYY"
   const m = s.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/);
@@ -121,6 +133,15 @@ export function parseLocalDate(input: string): Date | null {
     const mon = MONTHS[m[1].slice(0, 3).toLowerCase()];
     if (mon !== undefined) {
       const d = new Date(Number(m[3]), mon, Number(m[2]), 12, 0, 0, 0);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  // "DD Month YYYY" with an Arabic month name
+  const ar = s.match(/^(\d{1,2})\s+([\u0621-\u064A]+)[،,]?\s+(\d{4})$/);
+  if (ar) {
+    const mon = AR_MONTHS[ar[2].replace(/[أإآ]/g, 'ا')];
+    if (mon !== undefined) {
+      const d = new Date(Number(ar[3]), mon, Number(ar[1]), 12, 0, 0, 0);
       if (!isNaN(d.getTime())) return d;
     }
   }

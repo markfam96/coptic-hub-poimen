@@ -9,10 +9,21 @@
 // data from bleeding into another's on a shared device.
 import { userStorage as AsyncStorage, onStorageScopeChange } from '@/lib/storage';
 import { itemUnitCount as unitCount } from './psalter';
+import { isRTL } from '@/lib/i18n';
+
+// Progress is kept per language. A portion is a stretch of words, and the
+// Arabic text divides into different portions from the English, so English
+// progress cannot be applied to Arabic text or the reverse. The selection,
+// streak and daily pace are shared; the cards and recitations are not.
+// English keeps its original keys, so existing progress is untouched.
+const K_CARDS_EN  = 'poimen.psalm.cards';
+const K_CARDS_AR  = 'poimen.psalm.cards.ar';
+const K_RECITE_EN = 'poimen.psalm.recite';
+const K_RECITE_AR = 'poimen.psalm.recite.ar';
 
 const K_SELECTION = 'poimen.psalm.selection';
-const K_CARDS     = 'poimen.psalm.cards';
-const K_RECITE    = 'poimen.psalm.recite';
+const K_CARDS     = isRTL ? K_CARDS_AR : K_CARDS_EN;
+const K_RECITE    = isRTL ? K_RECITE_AR : K_RECITE_EN;
 const K_STREAK    = 'poimen.psalm.streak';
 const K_NEWPERDAY = 'poimen.psalm.newPerDay';
 
@@ -492,30 +503,50 @@ export async function saveNewPerDay(n: number): Promise<void> {
 
 // ─── Snapshot import/export (for cloud sync in lib/psalms/sync.ts) ─────────────
 
+// `cards` / `recite` are the English progress (the original shape, so older
+// app versions keep reading it); `cardsAr` / `reciteAr` are the Arabic.
 export interface PsalmSnapshot {
   selection: string[];
   cards: Record<string, PartCard>;
   recite: Record<string, ReciteCard>;
+  cardsAr?: Record<string, PartCard>;
+  reciteAr?: Record<string, ReciteCard>;
   streak: Streak;
   newPerDay: number;
 }
 
 export async function exportState(): Promise<PsalmSnapshot> {
-  const [selection, cardMap, recite, streak, newPerDay] = await Promise.all([
+  // The current language's cards go through the cache (it may hold writes);
+  // the other language's are read as stored.
+  const [selection, current, recite, streak, newPerDay, otherCards, otherRecite] = await Promise.all([
     loadSelection(), loadCards(), loadRecite(), loadStreak(), loadNewPerDay(),
+    readJSON<Record<string, PartCard>>(isRTL ? K_CARDS_EN : K_CARDS_AR, {}),
+    readJSON<Record<string, ReciteCard>>(isRTL ? K_RECITE_EN : K_RECITE_AR, {}),
   ]);
-  return { selection, cards: cardMap, recite, streak, newPerDay };
+  return isRTL
+    ? { selection, cards: otherCards, recite: otherRecite, cardsAr: current, reciteAr: recite, streak, newPerDay }
+    : { selection, cards: current, recite, cardsAr: otherCards, reciteAr: otherRecite, streak, newPerDay };
+}
+
+// The progress that belongs to the language the app is in.
+export function currentCards(snap: PsalmSnapshot): Record<string, PartCard> {
+  return (isRTL ? snap.cardsAr : snap.cards) ?? {};
 }
 
 // Overwrite local state with a snapshot (last-write-wins from the cloud). Resets
 // the in-memory card cache so subsequent reads reflect the imported data.
 export async function importState(snap: PsalmSnapshot): Promise<void> {
-  _cards = snap.cards ?? {};
-  enforceMonotoneMaturity(_cards);   // cloud snapshots may predate the rule
+  const en = snap.cards ?? {};
+  const ar = snap.cardsAr ?? {};
+  enforceMonotoneMaturity(en);   // cloud snapshots may predate the rule
+  enforceMonotoneMaturity(ar);
+  _cards = isRTL ? ar : en;
   await Promise.all([
     writeJSON(K_SELECTION, snap.selection ?? []),
-    writeJSON(K_CARDS, snap.cards ?? {}),
-    writeJSON(K_RECITE, snap.recite ?? {}),
+    writeJSON(K_CARDS_EN, en),
+    writeJSON(K_RECITE_EN, snap.recite ?? {}),
+    writeJSON(K_CARDS_AR, ar),
+    writeJSON(K_RECITE_AR, snap.reciteAr ?? {}),
     writeJSON(K_STREAK, snap.streak ?? { current: 0, longest: 0, last: null, lastFreezeUsed: null }),
     writeJSON(K_NEWPERDAY, snap.newPerDay ?? NEW_PER_SESSION),
   ]);

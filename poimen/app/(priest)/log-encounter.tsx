@@ -12,27 +12,32 @@ import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { parseLocalDate } from '@/lib/confession/dates';
 import { useDemoMode } from '@/lib/demo';
+import { S, fmt, fmtDate, GLYPH } from '@/lib/i18n';
+
+const T = S.priest.encounter;
+const SHARED = S.priest.shared;
+const DEMO_NAMES = S.priest.demo.names;
 
 type EncounterType = 'confession' | 'counseling' | 'advice' | 'visit' | 'phone' | 'group';
 
 type IconComp = React.ComponentType<{ size?: number; color?: string }>;
 
 const ENCOUNTER_TYPES: { value: EncounterType; label: string; desc: string; Icon: IconComp }[] = [
-  { value: 'confession', label: 'Holy Confession',   desc: 'Sacramental confession',        Icon: CrossIcon },
-  { value: 'counseling', label: 'Counseling Session', desc: 'In-person pastoral guidance',    Icon: SpeechIcon },
-  { value: 'advice',     label: 'Spiritual Advice',   desc: 'Brief direction or answer',      Icon: ThoughtIcon },
-  { value: 'visit',      label: 'Pastoral Visit',     desc: 'Home or hospital visit',         Icon: HouseIcon },
-  { value: 'phone',      label: 'Phone / Video Call', desc: 'Remote check-in',                Icon: PhoneIcon },
-  { value: 'group',      label: 'Group Encounter',    desc: 'Retreat, group study, etc.',     Icon: CongregationIcon },
+  { value: 'confession', label: T.types.confession.label, desc: T.types.confession.desc, Icon: CrossIcon },
+  { value: 'counseling', label: T.types.counseling.label, desc: T.types.counseling.desc, Icon: SpeechIcon },
+  { value: 'advice',     label: T.types.advice.label,     desc: T.types.advice.desc,     Icon: ThoughtIcon },
+  { value: 'visit',      label: T.types.visit.label,      desc: T.types.visit.desc,      Icon: HouseIcon },
+  { value: 'phone',      label: T.types.phone.label,      desc: T.types.phone.desc,      Icon: PhoneIcon },
+  { value: 'group',      label: T.types.group.label,      desc: T.types.group.desc,      Icon: CongregationIcon },
 ];
 
 const DEMO_MEMBERS = [
-  { id: 'demo-pb', name: 'Peter Botros' },
-  { id: 'demo-mh', name: 'Michael Hanna' },
-  { id: 'demo-sg', name: 'Sara Girgis' },
-  { id: 'demo-mm', name: 'Mary Mikhail' },
-  { id: 'demo-ag', name: 'Andrew George' },
-  { id: 'demo-cn', name: 'Christine Naguib' },
+  { id: 'demo-pb', name: DEMO_NAMES.pb },
+  { id: 'demo-mh', name: DEMO_NAMES.mh },
+  { id: 'demo-sg', name: DEMO_NAMES.sg },
+  { id: 'demo-mm', name: DEMO_NAMES.mm },
+  { id: 'demo-ag', name: DEMO_NAMES.ag },
+  { id: 'demo-cn', name: DEMO_NAMES.cn },
 ];
 
 export default function LogEncounterScreen() {
@@ -44,7 +49,7 @@ export default function LogEncounterScreen() {
   const [encounterType, setEncounterType] = useState<EncounterType>('confession');
   const [encounterDate, setEncounterDate] = useState(today());
   const [selectedMemberId, setSelectedMemberId] = useState(preselectedId ?? (demoMode ? 'demo-pb' : ''));
-  const [memberSearch, setMemberSearch] = useState(preselectedName ?? (demoMode ? 'Peter Botros' : ''));
+  const [memberSearch, setMemberSearch] = useState(preselectedName ?? (demoMode ? DEMO_NAMES.pb : ''));
   const [showMemberList, setShowMemberList] = useState(false);
   const [memberNote, setMemberNote] = useState('');
   const [privateNote, setPrivateNote] = useState('');
@@ -66,7 +71,7 @@ export default function LogEncounterScreen() {
     if (!user) return;
     const data = await db.getFlock(user.id, { ordered: true });
     if (data) {
-      const list = data.map(p => ({ id: p.id, name: p.full_name ?? 'Unknown' }));
+      const list = data.map(p => ({ id: p.id, name: p.full_name ?? SHARED.unknownMember }));
       setMemberList(list);
       // If preselected member not already set, don't change
       if (!preselectedId && list.length > 0) {
@@ -83,11 +88,11 @@ export default function LogEncounterScreen() {
   async function handleSave() {
     if (saving) return;
     if (!selectedMemberId) {
-      setSaveError('Please select a member from the list first.');
+      setSaveError(T.errSelectMember);
       return;
     }
     if (demoMode) {
-      setSaveError('You are in demo mode — sign in with a real account to save encounters.');
+      setSaveError(T.errDemo);
       return;
     }
     // parseLocalDate (not `new Date(str)`) because Hermes — React Native's JS
@@ -95,7 +100,7 @@ export default function LogEncounterScreen() {
     // silently blocking every save on device (it only "worked" in a browser).
     const parsedDate = parseLocalDate(encounterDate);
     if (!parsedDate) {
-      setDateError('Invalid date — use a format like "Jun 7, 2026"');
+      setDateError(T.errDate);
       return;
     }
     setDateError('');
@@ -108,7 +113,7 @@ export default function LogEncounterScreen() {
     if (fuRaw) {
       const fd = parseLocalDate(fuRaw);
       if (!fd) {
-        setFollowUpError('Enter a date like "Jun 29, 2026", or leave this blank.');
+        setFollowUpError(T.errFollowUp);
         return;
       }
       const p = (n: number) => String(n).padStart(2, '0');
@@ -131,7 +136,7 @@ export default function LogEncounterScreen() {
     if (error) {
       // Surface the real reason (RLS denial, bad date, etc.) instead of a
       // generic message that hides what actually failed.
-      setSaveError(`Couldn't save: ${error}`);
+      setSaveError(fmt(T.errSave, { error }));
       return;
     }
     // No profile mirror here: RLS lets a user update only their OWN profiles
@@ -146,21 +151,21 @@ export default function LogEncounterScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
         <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>My Flock</Text>
+          <Text style={styles.backArrow}>{GLYPH.back}</Text>
+          <Text style={styles.backText}>{SHARED.myFlock}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.pageTitle}>Log Pastoral Encounter</Text>
-        <Text style={styles.pageSub}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</Text>
+        <Text style={styles.pageTitle}>{T.title}</Text>
+        <Text style={styles.pageSub}>{fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</Text>
 
         {/* Member */}
-        <Card title="Member" titleIconNode={<PersonIcon size={16} color={colors.gold} />}>
+        <Card title={T.memberCard} titleIconNode={<PersonIcon size={16} color={colors.gold} />}>
           <TextInput
             style={styles.textInput}
             value={memberSearch}
             onChangeText={t => { setMemberSearch(t); setShowMemberList(true); setSelectedMemberId(''); }}
             onFocus={() => setShowMemberList(true)}
-            placeholder="Search member..."
+            placeholder={T.memberSearchPlaceholder}
             placeholderTextColor={colors.faint}
           />
           {showMemberList && filteredMembers.length > 0 && (
@@ -181,7 +186,7 @@ export default function LogEncounterScreen() {
         </Card>
 
         {/* Encounter type */}
-        <Card title="Encounter Type" titleIconNode={<ClipboardIcon size={16} color={colors.gold} />}>
+        <Card title={T.typeCard} titleIconNode={<ClipboardIcon size={16} color={colors.gold} />}>
           {ENCOUNTER_TYPES.map(opt => {
             const active = encounterType === opt.value;
             return (
@@ -204,38 +209,38 @@ export default function LogEncounterScreen() {
         </Card>
 
         {/* Date */}
-        <Card title="Date" titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
+        <Card title={T.dateCard} titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
           <TextInput
             style={styles.textInput}
             value={encounterDate}
             onChangeText={t => { setEncounterDate(t); setDateError(''); }}
-            placeholder="E.g., Jun 7, 2026"
+            placeholder={T.datePlaceholder}
             placeholderTextColor={colors.faint}
           />
           {dateError ? <Text style={styles.errorText}>{dateError}</Text> : null}
         </Card>
 
         {/* Member-visible note */}
-        <Card title="Note to Member (Visible in their Timeline)" titleIconNode={<NotepadIcon size={16} color={colors.gold} />}>
+        <Card title={T.memberNoteCard} titleIconNode={<NotepadIcon size={16} color={colors.gold} />}>
           <TextInput
             style={[styles.textInput, { minHeight: 90, textAlignVertical: 'top' }]}
-            placeholder="E.g., We discussed the importance of the Agpeya as a rhythm of prayer..."
+            placeholder={T.memberNotePlaceholder}
             placeholderTextColor={colors.faint}
             multiline
             value={memberNote}
             onChangeText={setMemberNote}
           />
-          <Text style={styles.fieldHint}>This note appears in the member's Pastoral Journey timeline.</Text>
+          <Text style={styles.fieldHint}>{T.memberNoteHint}</Text>
         </Card>
 
         {/* Private FOC note */}
-        <Card title="Private Pastoral Notes (FOC Only)" titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
+        <Card title={T.privateNoteCard} titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
           <View style={styles.privacyNote}>
-            <Text style={styles.privacyNoteText}>✦ Never visible to the member.</Text>
+            <Text style={styles.privacyNoteText}>{T.privateNoteBanner}</Text>
           </View>
           <TextInput
             style={[styles.textInput, { minHeight: 90, textAlignVertical: 'top' }]}
-            placeholder="Your private observations and pastoral notes..."
+            placeholder={T.privateNotePlaceholder}
             placeholderTextColor={colors.faint}
             multiline
             value={privateNote}
@@ -244,24 +249,24 @@ export default function LogEncounterScreen() {
         </Card>
 
         {/* Follow-up */}
-        <Card title="Schedule Follow-Up (Optional)" titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
+        <Card title={T.followUpCard} titleIconNode={<CalendarIcon size={16} color={colors.gold} />}>
           <TextInput
             style={styles.textInput}
-            placeholder="E.g., Jun 29, 2026"
+            placeholder={T.followUpPlaceholder}
             placeholderTextColor={colors.faint}
             value={followUpDate}
             onChangeText={(t) => { setFollowUpDate(t); if (followUpError) setFollowUpError(''); }}
           />
           {followUpError ? <Text style={styles.errorText}>{followUpError}</Text> : null}
-          <Text style={styles.fieldHint}>A reminder date for your Flock view. Leave blank if none.</Text>
+          <Text style={styles.fieldHint}>{T.followUpHint}</Text>
         </Card>
 
         {/* Confession-specific notice */}
         {encounterType === 'confession' && (
           <View style={styles.confessionNotice}>
-            <Text style={styles.confessionNoticeTitle}>✝︎ Sacramental Privacy</Text>
+            <Text style={styles.confessionNoticeTitle}>{T.sealTitle}</Text>
             <Text style={styles.confessionNoticeBody}>
-              Confession content is protected by holy seal. Only the date and encounter type are recorded. No content from the member's examination is stored or transmitted.
+              {T.sealBody}
             </Text>
           </View>
         )}
@@ -274,7 +279,7 @@ export default function LogEncounterScreen() {
         >
           {saving
             ? <ActivityIndicator color={colors.navy} />
-            : <Text style={styles.saveBtnText}>{saved ? '✓ ENCOUNTER LOGGED' : 'LOG ENCOUNTER'}</Text>
+            : <Text style={styles.saveBtnText}>{saved ? T.saved : T.save}</Text>
           }
         </TouchableOpacity>
 
@@ -283,8 +288,14 @@ export default function LogEncounterScreen() {
   );
 }
 
+// The date field is typed into and parsed (parseLocalDate), so what it opens
+// with has to be something the parser reads back, whatever the language.
 function today(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const now = new Date();
+  const shown = fmtDate(now, { month: 'short', day: 'numeric', year: 'numeric' });
+  if (parseLocalDate(shown)) return shown;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
 

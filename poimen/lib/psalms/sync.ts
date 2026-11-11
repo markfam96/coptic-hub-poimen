@@ -6,7 +6,7 @@
 // exposes a lightweight summary for the Progress surface / Father of Confession.
 
 import * as db from '@/lib/db';
-import { exportState, importState, isLocalEmpty, computeStats, masteredItemsCount } from './store';
+import { exportState, importState, isLocalEmpty, computeStats, masteredItemsCount, currentCards } from './store';
 
 export const PSALM_SLUG = 'psalm-memorization';
 
@@ -39,7 +39,10 @@ export async function hydratePsalmsFromCloud(userId: string): Promise<boolean> {
 export async function pushPsalmsToCloud(userId: string): Promise<void> {
   try {
     const snapshot = await exportState();
-    const stats = computeStats(snapshot.selection, snapshot.cards);
+    // Counts describe the language the app is in, whose text the portions
+    // were cut from.
+    const cardsNow = currentCards(snapshot);
+    const stats = computeStats(snapshot.selection, cardsNow);
     const now = new Date().toISOString();
     await Promise.all([
       db.upsertAgentProgress({
@@ -69,7 +72,7 @@ export async function pushPsalmsToCloud(userId: string): Promise<void> {
           longestStreak: snapshot.streak.longest,
           mastered: stats.mastered,
           totalParts: stats.totalParts,
-          masteredItems: masteredItemsCount(snapshot.selection, snapshot.cards),
+          masteredItems: masteredItemsCount(snapshot.selection, cardsNow),
         },
         updated_at: now,
       }),

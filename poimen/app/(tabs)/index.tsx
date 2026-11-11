@@ -26,7 +26,7 @@ import { loadAttendance } from '@/lib/canon/attendance';
 import { shouldPromptSurvey } from '@/lib/survey/schedule';
 import { ensureFirstSeen, markPrompted } from '@/lib/survey/store';
 import { lastConfessionDate, loadConfessionDates, hydrateConfessionDatesFromCloud, daysSinceDate, confessionFrequencyDays } from '@/lib/confession/dates';
-import { VISIT_TYPE_KEYWORD } from '@/lib/scheduling/slots';
+import { VISIT_TYPE_KEYWORD, typeLabelMatches } from '@/lib/scheduling/slots';
 import { currentFast } from '@/lib/canon/fasting';
 import { loadStreak } from '@/lib/psalms/store';
 import { upcomingFeasts, feastOn } from '@/lib/feasts';
@@ -37,9 +37,12 @@ import { CrossIcon, CandleIcon } from '@/components/ui/TabIcons';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
 import { churchPromptVariant } from '@/lib/church-prompt';
 import { loadChurchPromptDismissed, dismissChurchPrompt } from '@/lib/church-prompt-store';
+import { S, fmt, plural, fmtDate, GLYPH } from '@/lib/i18n';
 
 const { width: SW } = Dimensions.get('window');
 const TILE_W = (SW - 48) / 2;
+
+const T = S.home;
 
 // ── Demo data ────────────────────────────────────────────────
 // Local YYYY-MM-DD of a timestamp, for same-day confession dedupe.
@@ -50,17 +53,17 @@ function localDayOf(iso: string): string {
 }
 
 const DEMO_TIMELINE = lazyThemed(() => [
-  { date: 'MAY 21, 2026', title: 'Holy Confession', body: 'Fr. Bishoy assigned a 40-day reading plan from the Psalms.', tag: '✝︎ Confession', tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
-  { date: 'MAY 4, 2026', title: 'Pastoral Visit — Home', body: 'Pastoral visit following the birth of your daughter.', tag: '◎ Pastoral Visit', tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
-  { date: 'APR 20, 2026', title: 'Holy Week Confession', body: 'Guidance on marriage and family prayer practices.', tag: '✝︎ Confession', tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
-  { date: 'MAR 12, 2026', title: 'Small Group Check-in', body: "Discussed the Book of Job with the young couples' group.", tag: '◇ Note', tagBg: colors.creamDim, tagColor: colors.muted, dim: true },
+  { ...T.demoTimeline[0], tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
+  { ...T.demoTimeline[1], tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
+  { ...T.demoTimeline[2], tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
+  { ...T.demoTimeline[3], tagBg: colors.creamDim, tagColor: colors.muted, dim: true },
 ]);
 
 // Computed live from the Coptic liturgical calendar (lib/feasts.ts,
 // lib/synaxarium.ts) — movable feasts follow each year's Pascha, Coptic-dated
 // entries follow Nayrouz.
 const toDateRow = (e: { date: Date; title: string; desc: string }) => ({
-  month: e.date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+  month: fmtDate(e.date, { month: 'short' }).toUpperCase(),
   day: String(e.date.getDate()),
   title: e.title,
   desc: e.desc,
@@ -70,13 +73,18 @@ const nextCommemRows = () => upcomingCommemorations(new Date(), 4).map(toDateRow
 
 function getDashboardSubtitle(): string {
   const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateStr = fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' });
   const c = gregorianToCoptic(today);
-  const dateStr2 = `${dateStr} · ${c.day} ${c.monthName}`;   // Gregorian + Coptic date
+  // The month is named in the app's language here; `monthName` stays English.
+  const coptic = fmt(T.header.copticDate, { day: c.day, month: S.calendar.copticMonths[c.month - 1] ?? c.monthName });
+  const dateStr2 = fmt(T.header.subtitle, { date: dateStr, coptic });   // Gregorian + Coptic date
   // Fast dates come from lib/canon/fasting — never hardcode them here, or the
   // header drifts out of step with the calendar and the canon.
   const fast = currentFast(today);
-  return fast ? `${dateStr2} · ${fast.name} · Day ${fast.day}` : dateStr2;
+  if (!fast) return dateStr2;
+  // `fast.name` is the key lib/canon/fasting uses; only its label is translated.
+  const fastName = S.calendar.fastNames[fast.name as keyof typeof S.calendar.fastNames] ?? fast.name;
+  return fmt(T.header.subtitleFast, { date: dateStr, coptic, fast: fastName, day: fast.day });
 }
 
 // What the Church celebrates today, for the header: a feast of the Lord takes
@@ -106,7 +114,7 @@ function VitalRow({ label, value, text, last, untracked, onPress }: {
     <View style={[styles.vitalRow, !last && { marginBottom: 16 }]}>
       <Text style={[styles.vitalLabel, untracked && styles.vitalLabelOff]}>{label}</Text>
       {untracked ? (
-        <Text style={styles.vitalAdd}>Add to your canon  ›</Text>
+        <Text style={styles.vitalAdd}>{T.vitals.addToCanon}</Text>
       ) : (
         <>
           <View style={styles.vitalTrack}>
@@ -142,19 +150,19 @@ function CustomizeSheet({ visible, active, onSave, onClose }: {
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
         <View style={cs.sheet}>
           <View style={cs.handle} />
-          <Text style={cs.title}>Customize Dashboard</Text>
-          <Text style={cs.sub}>The confession and canon tiles are always pinned at the top.</Text>
+          <Text style={cs.title}>{T.customize.title}</Text>
+          <Text style={cs.sub}>{T.customize.sub}</Text>
           {(Object.entries(SECTION_DEFS) as [SectionId, typeof SECTION_DEFS[SectionId]][]).map(([id, def]) => (
             <TouchableOpacity key={id} style={cs.row} onPress={() => toggle(id)} activeOpacity={0.7}>
               <Text style={cs.rowIcon}>{def.icon}</Text>
-              <Text style={cs.rowLabel}>{def.label}</Text>
+              <Text style={cs.rowLabel}>{T.customize.sections[id] ?? def.label}</Text>
               <View style={[cs.check, local.includes(id) && cs.checkOn]}>
                 {local.includes(id) && <Text style={cs.checkMark}>✓</Text>}
               </View>
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={cs.saveBtn} onPress={() => { H.success(); onSave(local); }}>
-            <Text style={cs.saveBtnText}>SAVE LAYOUT</Text>
+            <Text style={cs.saveBtnText}>{T.customize.save}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -204,7 +212,7 @@ export default function DashboardScreen() {
   const navigation = useNavigation();
   const { profile, user, refreshProfile } = useSession();
   const { demoMode, demoRole } = useDemoMode();
-  const firstName = firstGivenName(profile?.full_name) || 'friend';
+  const firstName = firstGivenName(profile?.full_name) || T.friend;
   const todayCelebration = getTodayCelebration();
 
   const [vitalStats, setVitalStats] = useState<VitalStat[] | null>(null);
@@ -420,7 +428,7 @@ export default function DashboardScreen() {
     // all three falls back to the standing request flag, which is then the only
     // way left to reach him.
     const visitTypeIds = apptTypes
-      .filter(t => t.active && t.label.toLowerCase().includes(VISIT_TYPE_KEYWORD))
+      .filter(t => t.active && typeLabelMatches(t.label, VISIT_TYPE_KEYWORD))
       .map(t => t.id);
     setVisitBookable(schedOpen && apptRules.some(r => r.active && visitTypeIds.includes(r.type_id)));
     // Auto-clear a pending visit request once the priest has logged a visit
@@ -485,12 +493,12 @@ export default function DashboardScreen() {
           <Text style={[styles.scheduleIcon, visitRequested && { color: colors.green }]}>◎</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.scheduleText}>
-              {visitRequested ? 'Pastoral Visit Requested' : 'Request Pastoral Visit'}
+              {visitRequested ? T.visit.requested : T.visit.request}
             </Text>
             <Text style={styles.scheduleSub}>
               {visitRequested
-                ? 'Your Father of Confession has been notified · tap to cancel'
-                : 'Let your Father of Confession know you’d like a visit'}
+                ? T.visit.requestedSub
+                : T.visit.requestSub}
             </Text>
           </View>
           {visitRequested && <Text style={styles.visitCheck}>✓</Text>}
@@ -504,10 +512,10 @@ export default function DashboardScreen() {
         >
           <Text style={styles.scheduleIcon}>◎</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.scheduleText}>Schedule a Pastoral Visit</Text>
-            <Text style={styles.scheduleSub}>Request a time from your Father of Confession</Text>
+            <Text style={styles.scheduleText}>{T.visit.schedule}</Text>
+            <Text style={styles.scheduleSub}>{T.visit.scheduleSub}</Text>
           </View>
-          <Text style={styles.visitChevron}>›</Text>
+          <Text style={styles.visitChevron}>{GLYPH.forward}</Text>
         </TouchableOpacity>
       )}
     </>
@@ -561,18 +569,18 @@ export default function DashboardScreen() {
     : daysSinceConfession <= confFreqDays * 2 ? 'due'
     : 'overdue';
   const statusColor = confessionStatus === 'recent' ? colors.green : confessionStatus === 'overdue' ? colors.red : colors.yellow;
-  const statusLabel = confessionStatus === 'recent' ? '✓ Recent'
-    : confessionStatus === 'due' ? '⚠ Due'
-    : confessionStatus === 'overdue' ? '⚠ Overdue'
-    : '— log it';
+  const statusLabel = confessionStatus === 'recent' ? T.tiles.statusRecent
+    : confessionStatus === 'due' ? T.tiles.statusDue
+    : confessionStatus === 'overdue' ? T.tiles.statusOverdue
+    : T.tiles.statusUnknown;
 
   const encounterTagMap: Record<string, any> = {
-    confession: { tag: '✝︎ Confession', tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
-    counseling: { tag: '◎ Counseling', tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
-    visit: { tag: '⊕ Pastoral Visit', tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
-    advice: { tag: '◇ Advice', tagBg: colors.creamDim, tagColor: colors.muted },
-    phone: { tag: '◈ Call', tagBg: colors.creamDim, tagColor: colors.muted },
-    group: { tag: '◉ Group', tagBg: 'rgba(93,202,135,0.12)', tagColor: colors.green },
+    confession: { tag: T.journey.tags.confession, tagBg: 'rgba(201,168,76,0.15)', tagColor: colors.goldLight },
+    counseling: { tag: T.journey.tags.counseling, tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
+    visit: { tag: T.journey.tags.visit, tagBg: 'rgba(41,128,185,0.15)', tagColor: colors.blue },
+    advice: { tag: T.journey.tags.advice, tagBg: colors.creamDim, tagColor: colors.muted },
+    phone: { tag: T.journey.tags.phone, tagBg: colors.creamDim, tagColor: colors.muted },
+    group: { tag: T.journey.tags.group, tagBg: 'rgba(93,202,135,0.12)', tagColor: colors.green },
   };
 
   return (
@@ -582,13 +590,13 @@ export default function DashboardScreen() {
         {/* Header */}
         <View style={styles.topbar}>
           <TouchableOpacity
-            style={[styles.chipBtn, { marginRight: 12 }]}
+            style={[styles.chipBtn, { marginEnd: 12 }]}
             onPress={() => { H.tap(); navigation.dispatch(DrawerActions.openDrawer()); }}
             hitSlop={8}
           >
             <Text style={styles.chipBtnText}>☰</Text>
           </TouchableOpacity>
-          <View style={{ flex: 1, marginRight: 12 }}>
+          <View style={{ flex: 1, marginEnd: 12 }}>
             <Text style={styles.subtitle}>{getDashboardSubtitle()}</Text>
             <Text style={styles.greeting}>{role === 'priest' ? clergyDisplayName(profile?.full_name) : firstName}</Text>
             {todayCelebration && (
@@ -598,12 +606,12 @@ export default function DashboardScreen() {
           <View style={styles.topbarBtns}>
             {role === 'priest' && (
               <TouchableOpacity style={styles.chipBtn} onPress={() => { H.tap(); router.push('/(priest)'); }}>
-                <Text style={styles.chipBtnText}>FOC</Text>
+                <Text style={styles.chipBtnText}>{T.header.focChip}</Text>
               </TouchableOpacity>
             )}
             {role === 'servant' && (
               <TouchableOpacity style={styles.chipBtn} onPress={() => { H.tap(); router.push('/(servant)'); }}>
-                <Text style={styles.chipBtnText}>CLASS</Text>
+                <Text style={styles.chipBtnText}>{T.header.classChip}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.chipBtn} onPress={enterCustomize}>
@@ -626,7 +634,7 @@ export default function DashboardScreen() {
           >
             <CrossIcon size={20} color={colors.gold} />
             <Text style={styles.tileBigNum}>{daysSinceConfession ?? '—'}</Text>
-            <Text style={styles.tileSubLabel}>days since confession</Text>
+            <Text style={styles.tileSubLabel}>{T.tiles.confessionLabel}</Text>
             <View style={[styles.tileStatus, { backgroundColor: confessionStatus ? `${statusColor}20` : 'transparent' }]}>
               <Text style={[styles.tileStatusText, { color: confessionStatus ? statusColor : colors.muted }]}>{statusLabel}</Text>
             </View>
@@ -643,14 +651,14 @@ export default function DashboardScreen() {
             <Text style={styles.tileBigNum}>
               {canonSet ? `${canonToday!.done}/${canonToday!.total}` : '—'}
             </Text>
-            <Text style={styles.tileSubLabel}>canon today</Text>
+            <Text style={styles.tileSubLabel}>{T.tiles.canonLabel}</Text>
             <View style={[styles.tileStatus, {
               backgroundColor: canonAllDone ? `${colors.green}20` : `${colors.yellow}20`
             }]}>
               <Text style={[styles.tileStatusText, {
                 color: canonAllDone ? colors.green : colors.yellow
               }]}>
-                {!canonSet ? '— set up' : canonAllDone ? '✓ All done' : '↑ In progress'}
+                {!canonSet ? T.tiles.canonSetUp : canonAllDone ? T.tiles.canonAllDone : T.tiles.canonInProgress}
               </Text>
             </View>
           </TouchableOpacity>
@@ -664,15 +672,15 @@ export default function DashboardScreen() {
         >
           <Harp size={24} color={colors.gold} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.latoBold, fontSize: 14, color: colors.cream, marginBottom: 2, flexShrink: 1 }}>Memorize the Psalms</Text>
-            <Text style={{ fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, flexShrink: 1 }}>Agpeya psalter · spaced repetition</Text>
+            <Text style={{ fontFamily: fonts.latoBold, fontSize: 14, color: colors.cream, marginBottom: 2, flexShrink: 1 }}>{T.psalms.title}</Text>
+            <Text style={{ fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, flexShrink: 1 }}>{T.psalms.sub}</Text>
           </View>
           {psalmStreak > 0 && (
-            <View style={{ backgroundColor: colors.gold + '22', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginRight: 4 }}>
+            <View style={{ backgroundColor: colors.gold + '22', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginEnd: 4 }}>
               <Text style={{ fontFamily: fonts.latoBold, fontSize: 12, color: colors.goldLight }}>🔥 {psalmStreak}</Text>
             </View>
           )}
-          <Text style={{ fontSize: 18, color: colors.gold }}>›</Text>
+          <Text style={{ fontSize: 18, color: colors.gold }}>{GLYPH.forward}</Text>
         </TouchableOpacity>
 
         {/* Survey prompt — a dismissible strip, never a modal. It asks for a
@@ -681,17 +689,17 @@ export default function DashboardScreen() {
         {showSurveyPrompt && (
           <View style={styles.surveyPrompt}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.surveyPromptTitle}>Five quick questions?</Text>
+              <Text style={styles.surveyPromptTitle}>{T.surveyPrompt.title}</Text>
               <Text style={styles.surveyPromptBody}>
-                Anonymous, about a minute — it decides what we build next.
+                {T.surveyPrompt.body}
               </Text>
             </View>
             <View style={styles.surveyPromptBtns}>
               <TouchableOpacity onPress={() => { H.tap(); setShowSurveyPrompt(false); router.push('/survey'); }} activeOpacity={0.85}>
-                <Text style={styles.surveyPromptGo}>Answer</Text>
+                <Text style={styles.surveyPromptGo}>{T.surveyPrompt.answer}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={dismissSurveyPrompt} hitSlop={8}>
-                <Text style={styles.surveyPromptSkip}>Not now</Text>
+                <Text style={styles.surveyPromptSkip}>{T.surveyPrompt.notNow}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -706,23 +714,23 @@ export default function DashboardScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.surveyPromptTitle}>
                 {churchPrompt === 'confirm'
-                  ? `Is "${profile?.church_name ?? ''}" in the directory?`
-                  : clergy ? 'Which church do you serve at?' : 'Which church do you attend?'}
+                  ? fmt(T.churchPrompt.confirmTitle, { church: profile?.church_name ?? '' })
+                  : clergy ? T.churchPrompt.serveTitle : T.churchPrompt.attendTitle}
               </Text>
               <Text style={styles.surveyPromptBody}>
                 {churchPrompt === 'confirm'
-                  ? 'Pick it from the list so your parish is counted — or keep the name you typed.'
+                  ? T.churchPrompt.confirmBody
                   : clergy
-                  ? 'Members who look you up by invite code will see it. You can change it any time in Profile.'
-                  : 'Pick your parish from the directory — it takes a moment, and you can change it any time in Profile.'}
+                  ? T.churchPrompt.serveBody
+                  : T.churchPrompt.attendBody}
               </Text>
             </View>
             <View style={styles.surveyPromptBtns}>
               <TouchableOpacity onPress={openChurchPicker} activeOpacity={0.85}>
-                <Text style={styles.surveyPromptGo}>{churchPrompt === 'confirm' ? 'Find it' : 'Choose'}</Text>
+                <Text style={styles.surveyPromptGo}>{churchPrompt === 'confirm' ? T.churchPrompt.findIt : T.churchPrompt.choose}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={dismissChurchPromptStrip} hitSlop={8}>
-                <Text style={styles.surveyPromptSkip}>{churchPrompt === 'confirm' ? 'Keep as typed' : 'Not now'}</Text>
+                <Text style={styles.surveyPromptSkip}>{churchPrompt === 'confirm' ? T.churchPrompt.keepAsTyped : T.churchPrompt.notNow}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -736,14 +744,14 @@ export default function DashboardScreen() {
             activeOpacity={0.85}
           >
             <Text style={styles.bannerCross}>✝︎</Text>
-            <Text style={styles.bannerLabel}>PREPARE</Text>
-            <Text style={styles.bannerTitle}>Examination of Conscience</Text>
+            <Text style={styles.bannerLabel}>{T.banner.label}</Text>
+            <Text style={styles.bannerTitle}>{T.banner.title}</Text>
             <Text style={styles.bannerBody}>
               {demoMode
-                ? `Fr. Bishoy has confession hours this Sunday. You last confessed ${demoDaysSince} days ago.`
-                : `You last confessed ${daysSinceConfession} days ago. Use the Confession tab to prepare before your next meeting.`}
+                ? plural(T.banner.demoBody, demoDaysSince)
+                : plural(T.banner.body, daysSinceConfession ?? 0)}
             </Text>
-            <View style={styles.bannerArrow}><Text style={styles.bannerArrowText}>Begin →</Text></View>
+            <View style={styles.bannerArrow}><Text style={styles.bannerArrowText}>{T.banner.begin}</Text></View>
           </TouchableOpacity>
         )}
 
@@ -751,18 +759,18 @@ export default function DashboardScreen() {
         {sections.includes('vitals') && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Spiritual Vitals</Text>
+              <Text style={styles.sectionTitle}>{T.vitals.title}</Text>
               <Text style={[styles.sectionAction, { color: colors.muted }]}>
                 {vitalsEpoch
-                  ? `Since ${new Date(`${vitalsEpoch}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                  : 'All time'}
+                  ? fmt(T.vitals.since, { date: fmtDate(new Date(`${vitalsEpoch}T12:00:00`), { month: 'short', day: 'numeric' }) })
+                  : T.vitals.allTime}
               </Text>
             </View>
             {!demoMode && profile?.foc_id && profile?.vitals_consent === false && (
               <TouchableOpacity style={styles.vitalNudge} onPress={() => setShowVitalsConsent(true)} activeOpacity={0.8}>
                 <Text style={styles.vitalNudgeText}>
-                  ◇ Your FOC can't see your vitals yet. Sharing helps him guide you better.{' '}
-                  <Text style={styles.vitalNudgeLink}>Turn on sharing →</Text>
+                  {T.vitals.nudgeBefore}{' '}
+                  <Text style={styles.vitalNudgeLink}>{T.vitals.nudgeLink}</Text>
                 </Text>
               </TouchableOpacity>
             )}
@@ -773,9 +781,9 @@ export default function DashboardScreen() {
               return (
                 <VitalRow
                   key={s.key}
-                  label={s.key === 'confession' ? 'Confession (days since)' : s.label}
+                  label={s.key === 'confession' ? T.vitals.confessionLabel : s.label}
                   value={s.pct}
-                  text={s.key === 'confession' ? (daysSinceConfession != null ? `${daysSinceConfession}d` : '—') : undefined}
+                  text={s.key === 'confession' ? (daysSinceConfession != null ? plural(T.vitals.daysShort, daysSinceConfession) : '—') : undefined}
                   last={i === rows.length - 1}
                   untracked={untracked}
                   onPress={() => router.push({ pathname: '/canon/rule', params: { focus: s.key } })}
@@ -787,15 +795,15 @@ export default function DashboardScreen() {
         )}
 
         {sections.includes('journey') && (
-          <Card title="Pastoral Journey" titleIcon="◎" action={<Text style={styles.cardAction}>View all</Text>}>
+          <Card title={T.journey.title} titleIcon="◎" action={<Text style={styles.cardAction}>{S.common.viewAll}</Text>}>
             {!demoMode && (
               <View style={styles.lastVisitRow}>
-                <Text style={styles.lastVisitLabel}>Last pastoral visit</Text>
+                <Text style={styles.lastVisitLabel}>{T.journey.lastVisit}</Text>
                 <Text style={styles.lastVisitVal}>
                   {lastVisit
-                    ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(lastVisit) ? `${lastVisit}T12:00:00` : lastVisit)
-                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                    : 'None yet'}
+                    ? fmtDate(new Date(/^\d{4}-\d{2}-\d{2}$/.test(lastVisit) ? `${lastVisit}T12:00:00` : lastVisit),
+                        { month: 'short', day: 'numeric', year: 'numeric' })
+                    : T.journey.noneYet}
                 </Text>
               </View>
             )}
@@ -804,12 +812,12 @@ export default function DashboardScreen() {
                 <TimelineRow key={i} item={item} last={i === DEMO_TIMELINE.length - 1} />
               ))
             ) : displayTimeline.length === 0 ? (
-              <Text style={styles.emptyInline}>Your encounters with your FOC will appear here.</Text>
+              <Text style={styles.emptyInline}>{T.journey.empty}</Text>
             ) : (
               displayTimeline.map((enc, i) => {
                 const meta = encounterTagMap[enc.encounter_type] ?? encounterTagMap.advice;
                 const item = {
-                  date: new Date(enc.encountered_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
+                  date: fmtDate(new Date(enc.encountered_at), { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
                   title: meta.tag.replace(/^[^\s]+\s/, ''),
                   body: enc.member_note ?? '',
                   ...meta,
@@ -822,7 +830,7 @@ export default function DashboardScreen() {
 
         {sections.includes('feasts') && (
           <>
-            <Card title="Upcoming Feasts" titleIcon="⊕">
+            <Card title={T.feasts.feastsTitle} titleIcon="⊕">
               {feasts.map((feast, i) => (
                 <View key={i} style={[styles.feastItem, i < feasts.length - 1 && styles.feastBorder]}>
                   <View style={styles.feastDate}>
@@ -837,7 +845,7 @@ export default function DashboardScreen() {
               ))}
             </Card>
 
-            <Card title="Upcoming Commemorations" titleIcon="✦">
+            <Card title={T.feasts.commemorationsTitle} titleIcon="✦">
               {commems.map((c, i) => (
                 <View key={i} style={[styles.feastItem, i < commems.length - 1 && styles.feastBorder]}>
                   <View style={styles.feastDate}>
@@ -855,21 +863,21 @@ export default function DashboardScreen() {
         )}
 
         {sections.includes('foc') && (
-          <Card title="My Father of Confession" titleIcon="◉">
+          <Card title={T.foc.title} titleIcon="◉">
             {demoMode ? (
               <>
                 <View style={styles.focRow}>
-                  <View style={styles.focAvatar}><Text style={styles.focAvatarText}>BM</Text></View>
+                  <View style={styles.focAvatar}><Text style={styles.focAvatarText}>{T.foc.demoInitials}</Text></View>
                   <View>
-                    <Text style={styles.focName}>Fr. Bishoy Marcos</Text>
-                    <Text style={styles.focChurch}>St. Mary's Coptic Orthodox Church</Text>
+                    <Text style={styles.focName}>{T.foc.demoName}</Text>
+                    <Text style={styles.focChurch}>{T.foc.demoChurch}</Text>
                   </View>
                 </View>
                 <TouchableOpacity style={styles.scheduleChip} onPress={() => { H.tap(); router.push('/(tabs)/appointments?focus=confession'); }} activeOpacity={0.8}>
                   <Text style={styles.scheduleIcon}>✝︎</Text>
                   <View>
-                    <Text style={styles.scheduleText}>Request Confession Appointment</Text>
-                    <Text style={styles.scheduleSub}>Next available: Sunday after Liturgy</Text>
+                    <Text style={styles.scheduleText}>{T.foc.requestConfession}</Text>
+                    <Text style={styles.scheduleSub}>{T.foc.demoNextAvailable}</Text>
                   </View>
                 </TouchableOpacity>
                 {visitRequestChip}
@@ -890,14 +898,14 @@ export default function DashboardScreen() {
                 <TouchableOpacity style={styles.scheduleChip} onPress={() => { H.tap(); router.push('/(tabs)/confession'); }} activeOpacity={0.8}>
                   <Text style={styles.scheduleIcon}>✝︎</Text>
                   <View>
-                    <Text style={styles.scheduleText}>Begin Confession Examination</Text>
-                    <Text style={styles.scheduleSub}>Prepare before your next meeting</Text>
+                    <Text style={styles.scheduleText}>{T.foc.beginExamination}</Text>
+                    <Text style={styles.scheduleSub}>{T.foc.prepareBefore}</Text>
                   </View>
                 </TouchableOpacity>
                 {visitRequestChip}
               </>
             ) : (
-              <Text style={styles.emptyInline}>Your Father of Confession will link your account when they set up their Nepsis profile.</Text>
+              <Text style={styles.emptyInline}>{T.foc.notLinked}</Text>
             )}
           </Card>
         )}
@@ -909,10 +917,10 @@ export default function DashboardScreen() {
         <View style={styles.consentModalBg}>
           <View style={styles.consentModal}>
             <Text style={styles.consentCross}>✝︎</Text>
-            <Text style={styles.consentTitle}>Share Your Vitals?</Text>
-            <Text style={styles.consentSub}>with {focProfile?.full_name ? clergyDisplayName(focProfile.full_name) : 'your Father of Confession'}</Text>
+            <Text style={styles.consentTitle}>{T.consent.title}</Text>
+            <Text style={styles.consentSub}>{fmt(T.consent.withName, { name: focProfile?.full_name ? clergyDisplayName(focProfile.full_name) : S.common.yourFatherOfConfession })}</Text>
             <Text style={styles.consentBody}>
-              Sharing your spiritual vitals lets your FOC understand how you're doing and guide you more intentionally between confessions. You can change this at any time in your profile.
+              {T.consent.body}
             </Text>
             <TouchableOpacity
               style={[styles.consentGoldBtn, settingConsent && { opacity: 0.6 }]}
@@ -921,11 +929,11 @@ export default function DashboardScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.consentGoldBtnText}>
-                {settingConsent ? 'Saving…' : 'SHARE WITH MY FOC'}
+                {settingConsent ? S.common.saving : T.consent.share}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleVitalsConsent(false)} disabled={settingConsent}>
-              <Text style={styles.consentSkipText}>Keep private for now</Text>
+              <Text style={styles.consentSkipText}>{T.consent.keepPrivate}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -954,7 +962,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   avatarBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.goldDim, borderWidth: 1, borderColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
   avatarBtnText: { fontFamily: fonts.cormorantMedium, fontSize: 16, color: colors.goldLight },
   subtitle: { fontFamily: fonts.latoBold, fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: colors.gold, opacity: 0.7, marginBottom: 4 },
-  greeting: { fontFamily: fonts.cormorantMedium, fontSize: 30, color: colors.cream, lineHeight: 36 },
+  // textAlign: on web a Text whose first letter is Latin (a name such as
+  // "Mark") would otherwise align as a left-to-right paragraph in Arabic.
+  greeting: { fontFamily: fonts.cormorantMedium, fontSize: 30, color: colors.cream, lineHeight: 36, textAlign: 'left' },
   feastLine: { fontFamily: fonts.latoBold, fontSize: 11, color: colors.goldLight, marginTop: 3, letterSpacing: 0.3 },
 
   // Tile pair

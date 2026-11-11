@@ -9,15 +9,18 @@ import { Drawer } from 'expo-router/drawer';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { S, isRTL } from '@/lib/i18n';
 import { CongregationIcon, PersonIcon, CandleIcon, CrossIcon, CalendarIcon } from '@/components/ui/TabIcons';
+
+const T = S.priest.nav;
 
 function DrawerHeader() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.brand, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.brandCross}>✝︎</Text>
-      <Text style={styles.brandName}>Nepsis</Text>
-      <Text style={styles.brandSub}>Father of Confession</Text>
+      <Text style={styles.brandName}>{S.common.appName}</Text>
+      <Text style={styles.brandSub}>{S.common.fatherOfConfession}</Text>
     </View>
   );
 }
@@ -43,6 +46,9 @@ export default function PriestLayout() {
         headerShown: false,
         swipeEnabled: true,
         swipeEdgeWidth: 60,
+        // The drawer opens from the side reading starts on. Set explicitly:
+        // on web React Navigation cannot see the page's direction.
+        drawerPosition: isRTL ? 'right' : 'left',
         drawerActiveTintColor: colors.gold,
         drawerInactiveTintColor: colors.muted,
         drawerActiveBackgroundColor: colors.goldDim,
@@ -51,19 +57,19 @@ export default function PriestLayout() {
       }}
     >
       <Drawer.Screen name="index" options={{
-        title: 'Flock',
+        title: T.flock,
         drawerIcon: ({ color }: IconProps) => <CongregationIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="schedule" options={{
-        title: 'Schedule',
+        title: T.schedule,
         drawerIcon: ({ color }: IconProps) => <CalendarIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="member" options={{
-        title: 'Member',
+        title: T.member,
         drawerIcon: ({ color }: IconProps) => <PersonIcon size={20} color={color} />,
       }} />
       <Drawer.Screen name="canon-templates" options={{
-        title: 'Canon',
+        title: T.canon,
         drawerIcon: ({ color }: IconProps) => <CandleIcon size={20} color={color} />,
       }} />
       {/* One member's canon — always opened from their screen with a memberId,
@@ -73,7 +79,7 @@ export default function PriestLayout() {
         drawerItemStyle: { display: 'none' },
       }} />
       <Drawer.Screen name="log-encounter" options={{
-        title: 'Encounter',
+        title: T.encounter,
         drawerIcon: ({ color }: IconProps) => <CrossIcon size={20} color={color} />,
       }} />
     </Drawer>

@@ -5,6 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Platform } from 'react-native';
+import { S } from '@/lib/i18n';
 
 const ENABLED_KEY = 'app:faceIdLockEnabled';
 
@@ -48,7 +49,7 @@ export async function saveFaceIdLockEnabled(enabled: boolean): Promise<void> {
 export async function authenticateWithBiometrics(): Promise<boolean> {
   try {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Nepsis',
+      promptMessage: S.auth.lock.prompt,
       disableDeviceFallback: false,
     });
     return result.success;

@@ -18,6 +18,7 @@
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+      "CFBundleLocalizations": ["en", "ar"],
         "NSFaceIDUsageDescription": "Nepsis uses Face ID to keep your pastoral and confession data private after sign-in."
       }
     },

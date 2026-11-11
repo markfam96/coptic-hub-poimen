@@ -20,8 +20,25 @@ const KEEP_DAYS = 366; // longitudinal — keep a year of records
 
 // The scoring itself lives in vitals.ts (no storage, so it can be tested);
 // re-exported here so existing call sites keep one import.
-export { VITAL_CATEGORIES, computeVitals, type VitalStat, type ConfessionInput, type DayRecord, type CanonHistory } from './vitals';
-import type { CanonHistory, DayRecord } from './vitals';
+export { type VitalStat, type ConfessionInput, type DayRecord, type CanonHistory } from './vitals';
+import { VITAL_CATEGORIES as VITAL_CATEGORIES_EN, computeVitals as scoreVitals } from './vitals';
+import type { CanonHistory, DayRecord, ConfessionInput, VitalStat } from './vitals';
+import { S } from '@/lib/i18n';
+
+// vitals.ts imports nothing, so its row names are English; the two exports
+// below are the same table and the same scoring with the names in the
+// session's language. Keys, matching and arithmetic are untouched.
+const VITAL_LABELS: Record<string, string> = S.canon.vitals;
+
+export const VITAL_CATEGORIES = VITAL_CATEGORIES_EN.map(c => ({ ...c, label: VITAL_LABELS[c.key] ?? c.label }));
+
+export function computeVitals(
+  history: CanonHistory,
+  since?: string | null,
+  confession?: ConfessionInput,
+): VitalStat[] {
+  return scoreVitals(history, since, confession, VITAL_LABELS);
+}
 
 export async function loadCanonHistory(): Promise<CanonHistory> {
   try {

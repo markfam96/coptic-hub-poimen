@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { S } from '@/lib/i18n';
 
 // Landing route for poimen://auth-callback deep links (magic link + password
 // recovery). The tokens ride in the URL fragment and are consumed by the
@@ -16,9 +17,9 @@ export default function AuthCallbackScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.center}>
         <ActivityIndicator color={colors.gold} />
-        <Text style={styles.text}>Signing you in…</Text>
+        <Text style={styles.text}>{S.auth.callback.signingIn}</Text>
         <TouchableOpacity onPress={() => router.replace('/sign-in')} style={styles.fallback}>
-          <Text style={styles.fallbackText}>Taking too long? The link may have expired — back to sign in</Text>
+          <Text style={styles.fallbackText}>{S.auth.callback.fallback}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

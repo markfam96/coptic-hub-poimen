@@ -16,7 +16,14 @@ import {
   Lato_700Bold,
   useFonts as useLato,
 } from '@expo-google-fonts/lato';
+import { useFonts as useArabicFonts } from 'expo-font';
+import { Amiri_400Regular } from '@expo-google-fonts/amiri/400Regular';
+import { Amiri_700Bold } from '@expo-google-fonts/amiri/700Bold';
+import { IBMPlexSansArabic_400Regular } from '@expo-google-fonts/ibm-plex-sans-arabic/400Regular';
+import { IBMPlexSansArabic_500Medium } from '@expo-google-fonts/ibm-plex-sans-arabic/500Medium';
+import { IBMPlexSansArabic_700Bold } from '@expo-google-fonts/ibm-plex-sans-arabic/700Bold';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { S, plural, isRTL, rootDirectionStyle, settleLayoutDirection, willReloadForDirection } from '@/lib/i18n';
 import { AuthProvider, useSession } from '@/lib/auth';
 import { DemoProvider, useDemoMode } from '@/lib/demo';
 import { setStorageScope } from '@/lib/storage';
@@ -32,6 +39,22 @@ import { isBiometricAvailable, loadFaceIdLockEnabled, authenticateWithBiometrics
 import type { AuthSession } from '@/lib/db';
 
 SplashScreen.preventAutoHideAsync();
+
+const ARABIC_FACES = {
+  Amiri_400Regular,
+  Amiri_700Bold,
+  IBMPlexSansArabic_400Regular,
+  IBMPlexSansArabic_500Medium,
+  IBMPlexSansArabic_700Bold,
+};
+const NO_FACES = {};
+
+// react-native-web resolves marginStart / paddingEnd / start / end from its own
+// direction context, not from <html dir>: without this an inline
+// `marginEnd: 12` stays on the right in Arabic. A `dir` prop on a View sets
+// that context for everything below it, modal portals included. Native needs
+// nothing here.
+const WEB_DIRECTION = Platform.OS === 'web' ? ({ dir: isRTL ? 'rtl' : 'ltr' } as object) : null;
 
 // Gates the already-persisted Supabase session behind Face ID — the session
 // itself survives app restarts (see lib/supabase.ts persistSession), so
@@ -59,7 +82,9 @@ function useFaceIdLock(session: AuthSession | null, demoMode: boolean) {
     return () => { cancelled = true; unsub(); };
   }, []);
 
-  const protect = ready && available && enabled && !!session && !demoMode;
+  // On the launch that is about to reload itself to switch layout direction
+  // (lib/i18n settleLayoutDirection), asking here would only be asked again.
+  const protect = ready && available && enabled && !!session && !demoMode && !willReloadForDirection();
 
   useEffect(() => {
     if (protect) setLocked(true);
@@ -110,10 +135,10 @@ function FaceIdLockScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <View style={lockStyles.overlay}>
       <Text style={lockStyles.cross}>✝︎</Text>
-      <Text style={lockStyles.title}>Nepsis is locked</Text>
-      <Text style={lockStyles.body}>Use Face ID to continue.</Text>
+      <Text style={lockStyles.title}>{S.auth.lock.title}</Text>
+      <Text style={lockStyles.body}>{S.auth.lock.body}</Text>
       <TouchableOpacity style={lockStyles.btn} onPress={onRetry}>
-        <Text style={lockStyles.btnText}>UNLOCK</Text>
+        <Text style={lockStyles.btnText}>{S.auth.lock.unlock}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -135,6 +160,8 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 // ── PIN Modal ─────────────────────────────────────────────────
+const PIN = S.auth.pin;
+
 function PINModal() {
   const { pinAction, completePINSetup, completePINRecovery, startFreshKeypair, skipPINSetup } = useSession();
   const [pin, setPin] = useState('');
@@ -153,11 +180,11 @@ function PINModal() {
   async function handleSubmit() {
     setError('');
     if (isNew) {
-      if (pin.length < MIN_PIN_LENGTH) { setError(`PIN must be at least ${MIN_PIN_LENGTH} characters.`); return; }
-      if (pin !== confirmPin) { setError('PINs do not match.'); return; }
-      if (!wroteItDown) { setError('Please write your PIN down first, then tick the box.'); return; }
+      if (pin.length < MIN_PIN_LENGTH) { setError(plural(PIN.errTooShort, MIN_PIN_LENGTH)); return; }
+      if (pin !== confirmPin) { setError(PIN.errMismatch); return; }
+      if (!wroteItDown) { setError(PIN.errWriteDown); return; }
     } else if (!pin) {
-      setError('Enter your PIN.'); return;
+      setError(PIN.errEmpty); return;
     }
     // Sealing and unsealing are deliberately slow (a few seconds).
     setWorking(true);
@@ -166,11 +193,11 @@ function PINModal() {
         await completePINSetup(pin);
       } else {
         const ok = await completePINRecovery(pin);
-        if (!ok) { setError('Incorrect PIN. Try again.'); setWorking(false); return; }
+        if (!ok) { setError(PIN.errIncorrect); setWorking(false); return; }
       }
       reset();
     } catch {
-      setError('Something went wrong saving your PIN. Check your connection and try again.');
+      setError(PIN.errSave);
       setWorking(false);
     }
   }
@@ -187,25 +214,25 @@ function PINModal() {
         <View style={pinStyles.card}>
           <Text style={pinStyles.cross}>✝︎</Text>
           <Text style={pinStyles.title}>
-            {pinAction === 'setup' ? 'Set a Recovery PIN'
-              : pinAction === 'upgrade' ? 'Strengthen Your Recovery PIN'
-              : 'Enter Your Recovery PIN'}
+            {pinAction === 'setup' ? PIN.titleSetup
+              : pinAction === 'upgrade' ? PIN.titleUpgrade
+              : PIN.titleRecover}
           </Text>
           <Text style={pinStyles.body}>
             {pinAction === 'setup'
-              ? 'If you switch devices, this PIN restores the key that opens your prayer requests, pastoral notes, and confession journal.'
+              ? PIN.bodySetup
               : pinAction === 'upgrade'
-              ? 'Nepsis now protects your recovery key more strongly. Choose a new PIN of at least 8 characters — a short phrase works well. Your current PIN will stop working.'
-              : 'Your encryption key is not on this device. Enter your PIN to restore it — without it, this device cannot open your prayer requests, notes, or confession journal.'}
+              ? PIN.bodyUpgrade
+              : PIN.bodyRecover}
           </Text>
           {isNew && (
             <Text style={pinStyles.warning}>
-              This PIN cannot be recovered or reset — not by your church, and not by Nepsis. If you lose it, everything it protects is gone for good. Write it down and keep it somewhere safe.
+              {PIN.warning}
             </Text>
           )}
           <TextInput
             style={pinStyles.input}
-            placeholder={isNew ? `PIN (at least ${MIN_PIN_LENGTH} characters)` : 'PIN'}
+            placeholder={isNew ? plural(PIN.placeholderNew, MIN_PIN_LENGTH) : PIN.placeholder}
             placeholderTextColor={colors.faint}
             value={pin}
             onChangeText={t => { setPin(t); setError(''); }}
@@ -217,7 +244,7 @@ function PINModal() {
           {isNew && (
             <TextInput
               style={pinStyles.input}
-              placeholder="Confirm PIN"
+              placeholder={PIN.confirmPlaceholder}
               placeholderTextColor={colors.faint}
               value={confirmPin}
               onChangeText={t => { setConfirmPin(t); setError(''); }}
@@ -235,7 +262,7 @@ function PINModal() {
               accessibilityState={{ checked: wroteItDown }}
             >
               <Text style={pinStyles.checkBox}>{wroteItDown ? '☑' : '☐'}</Text>
-              <Text style={pinStyles.checkText}>I have written my PIN down and stored it somewhere safe.</Text>
+              <Text style={pinStyles.checkText}>{PIN.wroteItDown}</Text>
             </TouchableOpacity>
           )}
           {error ? <Text style={pinStyles.error}>{error}</Text> : null}
@@ -245,17 +272,17 @@ function PINModal() {
             disabled={working}
           >
             {working
-              ? <View style={pinStyles.workingRow}><ActivityIndicator color={colors.navy} /><Text style={pinStyles.btnText}>{isNew ? 'SECURING YOUR KEY…' : 'UNLOCKING…'}</Text></View>
-              : <Text style={pinStyles.btnText}>{isNew ? 'SAVE PIN' : 'RESTORE'}</Text>}
+              ? <View style={pinStyles.workingRow}><ActivityIndicator color={colors.navy} /><Text style={pinStyles.btnText}>{isNew ? PIN.securing : PIN.unlocking}</Text></View>
+              : <Text style={pinStyles.btnText}>{isNew ? PIN.save : PIN.restore}</Text>}
           </TouchableOpacity>
           {isNew && (
             <TouchableOpacity onPress={skipPINSetup} style={pinStyles.skip} disabled={working}>
-              <Text style={pinStyles.skipText}>{pinAction === 'upgrade' ? 'Remind me next time' : 'Skip for now'}</Text>
+              <Text style={pinStyles.skipText}>{pinAction === 'upgrade' ? PIN.remindLater : PIN.skipForNow}</Text>
             </TouchableOpacity>
           )}
           {!isNew && (
             <TouchableOpacity onPress={handleForgotPIN} style={pinStyles.skip} disabled={working}>
-              <Text style={pinStyles.skipText}>I forgot my PIN — start fresh (prayer requests, pastoral notes, and your confession journal from before will be unreadable)</Text>
+              <Text style={pinStyles.skipText}>{PIN.forgot}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -395,8 +422,16 @@ export default function RootLayout() {
     Lato_700Bold,
   });
 
+  // The Arabic faces are imported one weight at a time (the package index
+  // would bundle all eleven files) and loaded only when the app is in Arabic.
+  const [arabicLoaded] = useArabicFonts(isRTL ? ARABIC_FACES : NO_FACES);
+
+  // Right-to-left on native only lands on the next start of the JS; this
+  // reloads once if the saved language and the native direction disagree.
+  useEffect(() => { settleLayoutDirection(); }, []);
+
   // On web, don't block render waiting for fonts — system fonts are fine as fallback
-  const fontsLoaded = Platform.OS === 'web' || (cormorantLoaded && latoLoaded);
+  const fontsLoaded = Platform.OS === 'web' || (cormorantLoaded && latoLoaded && (!isRTL || arabicLoaded));
 
   useEffect(() => {
     if (fontsLoaded && themeMode !== null && Platform.OS !== 'web') SplashScreen.hideAsync();
@@ -405,7 +440,8 @@ export default function RootLayout() {
   if (!fontsLoaded || themeMode === null) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={rootDirectionStyle}>
+      <View style={{ flex: 1 }} {...WEB_DIRECTION}>
       <DemoProvider>
         <AuthProvider>
           <TutorialProvider>
@@ -414,6 +450,7 @@ export default function RootLayout() {
           </TutorialProvider>
         </AuthProvider>
       </DemoProvider>
+      </View>
     </GestureHandlerRootView>
   );
 }

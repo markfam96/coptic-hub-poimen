@@ -3,11 +3,13 @@
 // RuleConfig for that weekday plus the automatic Coptic fasting rules. Shared
 // by the rule editor screen and the Canon tab's "My Spiritual Canon" list.
 
-import { RuleConfig, ReadMode, AGPEYA_HOURS, SERVICES, serviceVerb } from './rule-store';
+import { RuleConfig, ReadMode, AGPEYA_HOURS, SERVICES, serviceAction, fastUntilLabel } from './rule-store';
 import { isAbstinenceDay, prostrationsAllowed } from './fasting';
 import { localDateStr } from './postpone';
-import { periodNoun } from './periods';
 import { weeklyServiceKey } from './keys';
+import { S, fmt, plural } from '@/lib/i18n';
+
+const T = S.canon.items;
 
 // `freq` is set only on Heart of Service items — it drives which postpone
 // options (if any) the Canon tab offers.
@@ -41,8 +43,21 @@ function nextDueAfter(freq: string, lastDone: Date): Date {
 }
 
 const hourName = (k: string) => AGPEYA_HOURS.find(h => h.key === k)?.name ?? k;
-const serviceName = (k: string) => SERVICES.find(s => s.key === k)?.name ?? k;
-const readLabel = (mode: ReadMode, n: number) => `${n} ${mode === 'chapters' ? (n === 1 ? 'chapter' : 'chapters') : 'min'}`;
+const readLabel = (mode: ReadMode, n: number) => plural(mode === 'chapters' ? T.readChapters : T.readMinutes, n);
+
+// The row for a service committed to by count: "Attend Vespers — 1 of 2 this
+// week", and what it reads once the target is met. One sentence per frequency
+// (an unknown one reads as weekly, as periodNoun does). Shared with the Canon
+// tab, which rewrites the row in place when an attendance is logged.
+export function countedServiceLabels(
+  serviceKey: string, logged: number, target: number, freq: string,
+): { label: string; doneLabel: string } {
+  const pick = (table: Record<string, string>) => table[freq] ?? table.Weekly;
+  return {
+    label: fmt(pick(T.countProgress), { action: serviceAction(serviceKey), done: logged, target }),
+    doneLabel: pick(T.countComplete),
+  };
+}
 
 // `postponed` (from loadPostponements) maps a serving item's key to the local
 // date it returns — it is hidden until then. `serviceDone` (loadServiceDone)
@@ -97,7 +112,7 @@ export function todayItems(
 ): RuleItem[] {
   const d = rule.days[date.getDay()];
   const items: RuleItem[] = [];
-  for (const h of d.hours) items.push({ key: `hour_${h}`, label: `Pray the ${hourName(h)}`, icon: ICON_PRAYER });
+  for (const h of d.hours) items.push({ key: `hour_${h}`, label: fmt(T.prayHour, { hour: hourName(h) }), icon: ICON_PRAYER });
   if (rule.servicesMode === 'counts') {
     // Committed by count: one row per service showing this week's progress.
     // The member logs each attendance as they attend it.
@@ -109,15 +124,16 @@ export function todayItems(
       // The row stays for the whole week, including after the target is met —
       // it then reads as complete, and is the only way to undo an attendance
       // logged by mistake earlier in the week.
+      const { label, doneLabel } = countedServiceLabels(sv.key, logged, target, cfg!.freq);
       items.push({
         key: weeklyServiceKey(sv.key),
-        label: `${sv.verb ?? 'Attend'} ${sv.name} — ${logged} of ${target} this ${periodNoun(cfg!.freq)}`,
+        label,
         icon: ICON_CHURCH,
-        doneLabel: `✓ Complete for this ${periodNoun(cfg!.freq)}`,
+        doneLabel,
       });
     }
   } else {
-    for (const sv of d.services) items.push({ key: `svc_${sv}`, label: `${serviceVerb(sv)} ${serviceName(sv)}`, icon: ICON_CHURCH });
+    for (const sv of d.services) items.push({ key: `svc_${sv}`, label: serviceAction(sv), icon: ICON_CHURCH });
   }
   d.serving.forEach((sv, i) => {
     if (!sv.text.trim()) return;
@@ -135,11 +151,11 @@ export function todayItems(
   });
   // Abstinence only — a Saturday or Sunday inside a fasting season keeps the
   // season's food restrictions but never delays the meal, so no row here.
-  if (isAbstinenceDay(date)) items.push({ key: 'fast', label: `Fast — abstain from food until ${rule.fastUntil}`, icon: ICON_FAST });
-  if (rule.prostrations > 0 && prostrationsAllowed(date)) items.push({ key: 'prostrations', label: `${rule.prostrations} prostrations (metanias)`, icon: ICON_PRAYER });
-  if (rule.quietMinutes > 0) items.push({ key: 'quiet', label: `${rule.quietMinutes} min of quiet time`, icon: ICON_QUIET });
-  if (rule.bible.amount > 0) items.push({ key: 'bible', label: `Bible reading — ${readLabel(rule.bible.mode, rule.bible.amount)}`, icon: ICON_READING });
-  if (rule.book && rule.book.amount > 0) items.push({ key: 'book', label: `${rule.book.title || 'Spiritual book'} — ${readLabel(rule.book.mode, rule.book.amount)}`, icon: ICON_READING });
+  if (isAbstinenceDay(date)) items.push({ key: 'fast', label: fmt(T.fast, { time: fastUntilLabel(rule.fastUntil) }), icon: ICON_FAST });
+  if (rule.prostrations > 0 && prostrationsAllowed(date)) items.push({ key: 'prostrations', label: plural(T.prostrations, rule.prostrations), icon: ICON_PRAYER });
+  if (rule.quietMinutes > 0) items.push({ key: 'quiet', label: plural(T.quiet, rule.quietMinutes), icon: ICON_QUIET });
+  if (rule.bible.amount > 0) items.push({ key: 'bible', label: fmt(T.bible, { amount: readLabel(rule.bible.mode, rule.bible.amount) }), icon: ICON_READING });
+  if (rule.book && rule.book.amount > 0) items.push({ key: 'book', label: fmt(T.book, { title: rule.book.title || T.bookFallback, amount: readLabel(rule.book.mode, rule.book.amount) }), icon: ICON_READING });
   // Attendances logged outside the rule. Skipped where the rule already put the
   // same service on this day — that row covers it, and two would double-count
   // in the vitals.
@@ -147,10 +163,10 @@ export function todayItems(
     const key = `svc_${sv}`;
     if (items.some(it => it.key === key || it.key === weeklyServiceKey(sv))) continue;
     items.push({
-      key, label: `${serviceVerb(sv)} ${serviceName(sv)}`, icon: ICON_CHURCH, adhoc: true,
+      key, label: serviceAction(sv), icon: ICON_CHURCH, adhoc: true,
       // Says why the row is already ticked, and that tapping removes it rather
       // than unchecking it — otherwise the tap reads as destructive-by-surprise.
-      doneLabel: '✓ Logged — not part of your canon · tap to remove',
+      doneLabel: T.adhocDone,
     });
   }
   return items;

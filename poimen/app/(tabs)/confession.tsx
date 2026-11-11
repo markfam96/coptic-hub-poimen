@@ -43,10 +43,13 @@ import {
 import {
   RELATIONAL_CATEGORIES, RELATIONAL_EXAMINATION, RelationalCategory,
 } from '@/lib/confession/relationalExamination';
-import { JournalEntry as FlaggedJournalEntry, getFlaggedForConfession, clearConfessionFlags } from '@/lib/journal';
+import { JournalEntry as FlaggedJournalEntry, getFlaggedForConfession, clearConfessionFlags, UNTITLED } from '@/lib/journal';
+import { S, fmt, plural, fmtDate, fmtTime, GLYPH, ltrText, isRTL } from '@/lib/i18n';
 
+const T = S.confession;
+const X = S.examination;
 
-const FREQ_LABEL: Record<SinFrequency, string> = { once: 'Once', few: 'A few times', often: 'Often' };
+const FREQ_LABEL: Record<SinFrequency, string> = X.freqLabel;
 
 // Dark-theme-friendly palette per examination domain (the Nepsis light-mode
 // colorLight values don't read on navy, so we map to Nepsis's accents).
@@ -59,13 +62,13 @@ type DomainMeta = {
   bg: string;
 };
 const DOMAIN_META: Record<JournalCategory, DomainMeta> = lazyThemed(() => ({
-  tongue:              { label: 'The Tongue',          icon: SpeechIcon,     color: '#e07a86',       bg: 'rgba(224,112,112,0.12)' },
-  thoughts:            { label: 'Thoughts',            icon: ThoughtIcon,    color: colors.blue,     bg: colors.blueBg },
-  hearing:             { label: 'Hearing',             icon: EarIcon,        color: colors.goldLight, bg: colors.goldDim },
-  eyes:                { label: 'The Eyes',            icon: EyeIcon,        color: colors.green,     bg: colors.greenBg },
-  actions:             { label: 'Actions',             icon: HandIcon,       color: colors.purple,    bg: 'rgba(201,160,220,0.12)' },
-  neglected_practices: { label: 'Neglected Practices', icon: PrayerRopeIcon, color: '#c2b199',       bg: 'rgba(194,177,153,0.12)' },
-  other:               { label: 'Other',               icon: PencilIcon,     color: colors.muted,     bg: colors.creamDim },
+  tongue:              { label: X.categories.tongue,             icon: SpeechIcon,     color: '#e07a86',       bg: 'rgba(224,112,112,0.12)' },
+  thoughts:            { label: X.categories.thoughts,           icon: ThoughtIcon,    color: colors.blue,     bg: colors.blueBg },
+  hearing:             { label: X.categories.hearing,            icon: EarIcon,        color: colors.goldLight, bg: colors.goldDim },
+  eyes:                { label: X.categories.eyes,               icon: EyeIcon,        color: colors.green,     bg: colors.greenBg },
+  actions:             { label: X.categories.actions,            icon: HandIcon,       color: colors.purple,    bg: 'rgba(201,160,220,0.12)' },
+  neglected_practices: { label: X.categories.neglectedPractices, icon: PrayerRopeIcon, color: '#c2b199',       bg: 'rgba(194,177,153,0.12)' },
+  other:               { label: X.categories.other,              icon: PencilIcon,     color: colors.muted,     bg: colors.creamDim },
 }));
 
 const CATEGORIES: SinCategory[] = ['tongue', 'thoughts', 'hearing', 'eyes', 'actions', 'neglected_practices'];
@@ -73,11 +76,17 @@ const DOMAINS: JournalCategory[] = [...CATEGORIES, 'other'];
 
 // Section metadata for the relational (original Nepsis) examination style.
 const RELATIONAL_META: Record<RelationalCategory, DomainMeta> = lazyThemed(() => ({
-  toward_god:    { label: 'Toward God',    icon: CrossIcon,     color: colors.goldLight, bg: colors.goldDim },
-  toward_others: { label: 'Toward Others', icon: HeartIcon,     color: '#e07a86',        bg: 'rgba(224,112,112,0.12)' },
-  toward_self:   { label: 'Toward Self',   icon: EyeIcon,       color: colors.blue,      bg: colors.blueBg },
-  omissions:     { label: 'Omissions',     icon: ClipboardIcon, color: colors.green,     bg: colors.greenBg },
+  toward_god:    { label: X.categories.towardGod,    icon: CrossIcon,     color: colors.goldLight, bg: colors.goldDim },
+  toward_others: { label: X.categories.towardOthers, icon: HeartIcon,     color: '#e07a86',        bg: 'rgba(224,112,112,0.12)' },
+  toward_self:   { label: X.categories.towardSelf,   icon: EyeIcon,       color: colors.blue,      bg: colors.blueBg },
+  omissions:     { label: X.categories.omissions,    icon: ClipboardIcon, color: colors.green,     bg: colors.greenBg },
 }));
+
+// The two ways the examination is organized. `value` is what is saved.
+const EXAM_STYLE_OPTIONS: { value: ExamStyle; label: string }[] = [
+  { value: 'senses', label: X.styles.senses },
+  { value: 'relational', label: X.styles.relational },
+];
 
 type ExamSectionKey = JournalCategory | RelationalCategory;
 const sectionMeta = (k: ExamSectionKey): DomainMeta =>
@@ -88,20 +97,43 @@ const sectionMeta = (k: ExamSectionKey): DomainMeta =>
 // Meta for the two non-sin groups shown in the in-session notes: free-text
 // guidance questions, and journal entries flagged "bring to confession".
 const GUIDANCE_META: DomainMeta = lazyThemed(() => ({
-  label: 'Questions & Guidance', icon: CandleIcon, color: colors.yellow, bg: colors.yellowBg,
+  label: T.session.guidanceGroup, icon: CandleIcon, color: colors.yellow, bg: colors.yellowBg,
 }));
 const BLESSINGS_META: DomainMeta = lazyThemed(() => ({
-  label: 'From Your Journal', icon: HeartIcon, color: colors.goldLight, bg: colors.goldDim,
+  label: T.session.journalGroup, icon: HeartIcon, color: colors.goldLight, bg: colors.goldDim,
 }));
 
 function relTime(ms: number): string {
   const d = new Date(ms);
   const now = new Date();
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  if (d.toDateString() === now.toDateString()) return `Today · ${time}`;
+  // English keeps the device's own date and time format, as it always did;
+  // Arabic uses the app's Arabic format.
+  const time = isRTL ? fmtTime(d, { hour: 'numeric', minute: '2-digit' }) : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return fmt(T.journal.todayAt, { time });
   const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return `Yesterday · ${time}`;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ` · ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return fmt(T.journal.yesterdayAt, { time });
+  const date = isRTL ? fmtDate(d, { month: 'short', day: 'numeric' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return fmt(T.journal.dateAt, { date, time });
+}
+
+// A journal entry filed under a catalogue item is shown by that item's
+// wording in the app's language; the title saved with it (the wording at the
+// time it was written) is the fallback, and what a free-text entry shows.
+function incidentTitle(inc: JournalIncident): string {
+  if (!inc.sinId) return inc.title;
+  return SIN_CATALOGUE.find(s => s.id === inc.sinId)?.name
+    ?? RELATIONAL_EXAMINATION.find(q => q.id === inc.sinId)?.text
+    ?? inc.title;
+}
+
+// The date field is typed into and parsed (parseLocalDate), so what it opens
+// with has to be something the parser reads back, whatever the language.
+function todayForDateField(): string {
+  const now = new Date();
+  const shown = fmtDate(now, { month: 'short', day: 'numeric', year: 'numeric' });
+  if (parseLocalDate(shown)) return shown;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
 type SubScreen = 'hub' | 'journal' | 'examination' | 'session' | 'complete' | 'history';
@@ -109,7 +141,7 @@ type SubScreen = 'hub' | 'journal' | 'examination' | 'session' | 'complete' | 'h
 function SubHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: React.ReactNode }) {
   return (
     <View style={styles.subHeader}>
-      <TouchableOpacity onPress={onBack} hitSlop={10}><Text style={styles.linkGold}>‹ Back</Text></TouchableOpacity>
+      <TouchableOpacity onPress={onBack} hitSlop={10}><Text style={styles.linkGold}>{GLYPH.back} {S.common.back}</Text></TouchableOpacity>
       <Text style={styles.subHeaderTitle}>{title}</Text>
       <View style={{ minWidth: 54, alignItems: 'flex-end' }}>{right}</View>
     </View>
@@ -135,9 +167,7 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
 
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(!demoMode);
-  const [selfReportDate, setSelfReportDate] = useState(
-    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  );
+  const [selfReportDate, setSelfReportDate] = useState(todayForDateField);
   const [selfReporting, setSelfReporting] = useState(false);
   const [selfReportSaved, setSelfReportSaved] = useState(false);
   const [selfReportError, setSelfReportError] = useState('');
@@ -152,16 +182,16 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
     // Restore this account's own dates from the cloud when its local namespace
     // is empty (fresh device, or after an account switch).
     if (!demoMode && user) await hydrateConfessionDatesFromCloud(user.id);
-    const fmt = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const longDate = (k: string) => fmtDate(new Date(`${k}T12:00:00`), { month: 'long', day: 'numeric', year: 'numeric' });
     const entries = new Map<string, { id: string; dateKey: string; date: string; note: string }>();
     for (const k of await loadConfessionDates()) {
-      entries.set(k, { id: `local_${k}`, dateKey: k, date: fmt(k), note: '' });
+      entries.set(k, { id: `local_${k}`, dateKey: k, date: longDate(k), note: '' });
     }
     if (demoMode) {
       for (const e of [
-        { key: '2026-05-21', note: 'Fr. assigned: 40-day Psalm reading plan' },
-        { key: '2026-04-20', note: 'Fr. assigned: Marriage prayer practice' },
-      ]) entries.set(e.key, { id: `demo_${e.key}`, dateKey: e.key, date: fmt(e.key), note: e.note });
+        { key: '2026-05-21', note: T.hub.demoNotePsalms },
+        { key: '2026-04-20', note: T.hub.demoNoteMarriage },
+      ]) entries.set(e.key, { id: `demo_${e.key}`, dateKey: e.key, date: longDate(e.key), note: e.note });
     } else if (user) {
       // Keep the FOC-visible dates mirror current (covers dates recorded
       // before the mirror existed).
@@ -171,7 +201,7 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
         const d = new Date(enc.encountered_at);
         const p = (n: number) => String(n).padStart(2, '0');
         const k = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-        entries.set(k, { id: enc.id, dateKey: k, date: fmt(k), note: enc.member_note ?? '' });
+        entries.set(k, { id: enc.id, dateKey: k, date: longDate(k), note: enc.member_note ?? '' });
       }
     }
     setHistory([...entries.values()].sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1)));
@@ -183,7 +213,7 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
     // parseLocalDate, not new Date(str): Hermes can't parse "Jun 15, 2026".
     const parsedDate = parseLocalDate(selfReportDate);
     if (!parsedDate) {
-      setSelfReportError('Invalid date — use a format like "Jun 15, 2026"');
+      setSelfReportError(T.hub.dateInvalid);
       return;
     }
     setSelfReportError('');
@@ -208,9 +238,9 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
   // loadHistory) and isn't deletable here.
   function handleDeleteConfession(dateKey: string) {
     confirmDestructive(
-      'Delete confession date',
-      'This removes it from your history and cannot be undone.',
-      'Delete',
+      T.hub.deleteDateTitle,
+      T.hub.deleteDateBody,
+      S.common.delete,
       async () => {
         const remaining = await deleteConfessionDate(dateKey);
         if (!demoMode && user) {
@@ -229,17 +259,16 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>Confession</Text>
+          <Text style={styles.pageTitle}>{T.hub.title}</Text>
         </View>
-        <Text style={styles.pageSubtitle}>Private — encrypted and kept on this device</Text>
+        <Text style={styles.pageSubtitle}>{T.hub.subtitle}</Text>
 
         {/* Privacy banner */}
         <View style={styles.privacyBanner}>
           <View style={{ flexShrink: 0, marginTop: 1 }}><LockIcon size={18} color={colors.gold} /></View>
           <Text style={styles.privacyText}>
-            <Text style={styles.strong}>Encrypted on your device. </Text>
-            Your journal and examination are saved between confessions, encrypted with a key that never
-            leaves this phone. Only the date of your confession is ever shared with your Father of Confession.
+            <Text style={styles.strong}>{T.hub.privacyBold}</Text>
+            {T.hub.privacyBody}
           </Text>
         </View>
 
@@ -248,42 +277,42 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
           onPress={() => replayModuleTutorial('confession')}
           activeOpacity={0.7}
         >
-          <Text style={styles.howText}>How this tab works  →</Text>
+          <Text style={styles.howText}>{T.hub.howItWorks}</Text>
         </TouchableOpacity>
 
         {/* Prepare */}
-        <Text style={styles.sectionLabel}>PREPARE</Text>
-        <ModuleCard icon={<NotepadIcon size={22} color={colors.gold} />} title="Confession journal"
-          sub="Log incidents and questions for your father — waiting in your notes"
+        <Text style={styles.sectionLabel}>{T.hub.sectionPrepare}</Text>
+        <ModuleCard icon={<NotepadIcon size={22} color={colors.gold} />} title={T.hub.journalTitle}
+          sub={T.hub.journalSub}
           onPress={() => onNav('journal')} />
-        <ModuleCard icon={<ClipboardIcon size={22} color={colors.gold} />} title="Examination of conscience"
-          sub="Review each day and before confession — carries into your notes"
+        <ModuleCard icon={<ClipboardIcon size={22} color={colors.gold} />} title={T.hub.examTitle}
+          sub={T.hub.examSub}
           onPress={() => onNav('examination')} />
         {/* During confession */}
-        <Text style={styles.sectionLabel}>DURING CONFESSION</Text>
-        <ModuleCard icon={<PrayingHandsIcon size={22} color={colors.gold} />} title="My confession notes"
-          sub={"Tap each item as you speak it —\nnothing is sent anywhere"}
+        <Text style={styles.sectionLabel}>{T.hub.sectionDuring}</Text>
+        <ModuleCard icon={<PrayingHandsIcon size={22} color={colors.gold} />} title={T.hub.notesTitle}
+          sub={T.hub.notesSub}
           onPress={() => onNav('session')} accent />
 
         {/* Look back */}
-        <Text style={styles.sectionLabel}>LOOK BACK</Text>
-        <ModuleCard icon={<CalendarIcon size={22} color={colors.gold} />} title="Confession history"
-          sub={"What you've confessed over time — what keeps returning,\nwhat has fallen away. This phone only."}
+        <Text style={styles.sectionLabel}>{T.hub.sectionLookBack}</Text>
+        <ModuleCard icon={<CalendarIcon size={22} color={colors.gold} />} title={T.hub.historyTitle}
+          sub={T.hub.historySub}
           onPress={() => onNav('history')} />
 
         {/* Self-report — hidden in demo mode */}
         {!demoMode && (
-          <Card title="Log My Last Confession" titleIcon="✝︎">
+          <Card title={T.hub.logTitle} titleIcon="✝︎">
             {profile?.last_confession_at && (
               <Text style={styles.lastConfDate}>
-                Last recorded: {new Date(profile.last_confession_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                {fmt(T.hub.lastRecorded, { date: fmtDate(new Date(profile.last_confession_at), { month: 'long', day: 'numeric', year: 'numeric' }) })}
               </Text>
             )}
             <TextInput
               style={styles.dateInput}
               value={selfReportDate}
               onChangeText={t => { setSelfReportDate(t); setSelfReportError(''); }}
-              placeholder="E.g., Jun 15, 2026"
+              placeholder={T.hub.datePlaceholder}
               placeholderTextColor={colors.faint}
             />
             {selfReportError ? <Text style={styles.selfReportError}>{selfReportError}</Text> : null}
@@ -294,36 +323,35 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
               activeOpacity={0.85}
             >
               <Text style={styles.logBtnText}>
-                {selfReporting ? 'Saving…' : selfReportSaved ? '✓ LOGGED' : 'LOG CONFESSION'}
+                {selfReporting ? S.common.saving : selfReportSaved ? T.hub.logged : T.hub.logButton}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.selfReportHint}>Only the date is saved. No content is recorded.</Text>
+            <Text style={styles.selfReportHint}>{T.hub.logHint}</Text>
           </Card>
         )}
 
         {/* Schedule — hands off to Appointments, which owns every scheduling
             state (no FOC linked, scheduling closed, no open times). */}
-        <Card title="Schedule Confession" titleIcon="◈">
+        <Card title={T.hub.scheduleTitle} titleIcon="◈">
           <ModuleCard
             icon={<CalendarIcon size={22} color={colors.gold} />}
-            title="Request a confession appointment"
-            sub={'Pick from the times your father has opened —\nhe confirms the request from his end'}
+            title={T.hub.requestTitle}
+            sub={T.hub.requestSub}
             onPress={() => router.push('/(tabs)/appointments?focus=confession')}
             accent
           />
         </Card>
 
         {/* History */}
-        <Card title="Confession History" flat>
+        <Card title={T.hub.datesTitle} flat>
           {loadingHistory ? (
             <ActivityIndicator color={colors.gold} style={{ paddingVertical: 20 }} />
           ) : history.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>✝︎</Text>
-              <Text style={styles.emptyTitle}>No history yet</Text>
+              <Text style={styles.emptyTitle}>{T.hub.datesEmptyTitle}</Text>
               <Text style={styles.emptyBody}>
-                Confession dates appear here after your Father of Confession logs your meeting, or when
-                you record one. Content is never stored on the server.
+                {T.hub.datesEmptyBody}
               </Text>
             </View>
           ) : (
@@ -333,9 +361,9 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
                   <View style={styles.histRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.histDate}>{item.date}</Text>
-                      <Text style={styles.histTitle}>Holy Confession</Text>
+                      <Text style={styles.histTitle}>{T.hub.holyConfession}</Text>
                       {item.note ? <Text style={styles.histNote}>{item.note}</Text> : null}
-                      <View style={styles.histTag}><Text style={styles.histTagText}>✝︎ Received</Text></View>
+                      <View style={styles.histTag}><Text style={styles.histTagText}>{T.hub.received}</Text></View>
                     </View>
                     {item.id.startsWith('local_') && (
                       <TouchableOpacity onPress={() => handleDeleteConfession(item.dateKey)} hitSlop={10}>
@@ -345,7 +373,7 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
                   </View>
                 </View>
               ))}
-              <Text style={styles.histFooter}>Dates only. Content protected by the holy seal.</Text>
+              <Text style={styles.histFooter}>{T.hub.datesFooter}</Text>
             </>
           )}
         </Card>
@@ -368,7 +396,7 @@ function ModuleCard({ icon, title, sub, onPress, accent }: {
           <Text key={i} style={styles.moduleSub}>{line}</Text>
         ))}
       </View>
-      <Text style={styles.moduleChevron}>›</Text>
+      <Text style={styles.moduleChevron}>{GLYPH.forward}</Text>
     </TouchableOpacity>
   );
 }
@@ -390,7 +418,7 @@ function JournalView({ onBack }: { onBack: () => void }) {
   }, []);
 
   const remove = (id: string) => {
-    confirmDestructive('Remove entry', 'Delete this journal entry?', 'Delete',
+    confirmDestructive(T.journal.removeEntryTitle, T.journal.removeEntryBody, S.common.delete,
       async () => setIncidents(await deleteIncident(id)));
   };
   const addQuestion = async () => {
@@ -399,7 +427,7 @@ function JournalView({ onBack }: { onBack: () => void }) {
     setQuestion('');
   };
   const removeQuestion = (id: string) => {
-    confirmDestructive('Remove question', 'Delete this question?', 'Delete',
+    confirmDestructive(T.journal.removeQuestionTitle, T.journal.removeQuestionBody, S.common.delete,
       async () => setGuidance(await deleteGuidance(id)));
   };
 
@@ -414,24 +442,23 @@ function JournalView({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SubHeader title="Journal" onBack={onBack}
+      <SubHeader title={T.journal.title} onBack={onBack}
         right={<TouchableOpacity onPress={() => setAdding(true)} hitSlop={12}><Text style={styles.addPlus}>＋</Text></TouchableOpacity>} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {loaded && incidents.length === 0 && (
           <View style={styles.emptyCard}>
             <View style={{ marginBottom: 10, opacity: 0.6 }}><NotepadIcon size={32} color={colors.gold} /></View>
-            <Text style={styles.emptyCardTitle}>Nothing logged yet</Text>
+            <Text style={styles.emptyCardTitle}>{T.journal.emptyTitle}</Text>
             <Text style={styles.emptyCardBody}>
-              As things happen through the day, tap ＋ to note them under an examination
-              domain. Whatever you record here will be waiting in your confession notes.
+              {T.journal.emptyBody}
             </Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setAdding(true)}>
-              <Text style={styles.emptyBtnText}>＋  Log an incident</Text>
+              <Text style={styles.emptyBtnText}>{T.journal.logIncident}</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {incidents.length > 0 && <Text style={styles.sectionLabel}>SINCE YOUR LAST CONFESSION</Text>}
+        {incidents.length > 0 && <Text style={styles.sectionLabel}>{T.journal.sinceLast}</Text>}
         {incidents.map(inc => {
           const m = sectionMeta(inc.category);
           const sin = inc.sinId ? SIN_CATALOGUE.find(s => s.id === inc.sinId) : undefined;
@@ -440,7 +467,7 @@ function JournalView({ onBack }: { onBack: () => void }) {
             <View key={inc.id} style={styles.journalCard}>
               <View style={styles.journalCardHeader}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.journalCardTitle}>{inc.title}</Text>
+                  <Text style={styles.journalCardTitle}>{sin?.name ?? relQ?.text ?? inc.title}</Text>
                   <Text style={styles.journalCardDate}>{relTime(inc.createdAt)}</Text>
                 </View>
                 <TouchableOpacity onPress={() => remove(inc.id)} hitSlop={10}><Text style={{ fontSize: 16, color: colors.muted }}>✕</Text></TouchableOpacity>
@@ -463,10 +490,9 @@ function JournalView({ onBack }: { onBack: () => void }) {
         {/* Spiritual guidance — questions to bring to the Father of Confession.
             Not sins, so no domain; they simply ride into the confession notes
             so the moment doesn't crowd them out. */}
-        <Text style={[styles.sectionLabel, { marginTop: 18 }]}>SPIRITUAL GUIDANCE</Text>
+        <Text style={[styles.sectionLabel, { marginTop: 18 }]}>{T.journal.guidanceLabel}</Text>
         <Text style={styles.guidanceHint}>
-          Questions you want to ask your father of confession. They will be waiting in your
-          confession notes, so nothing is forgotten in the moment.
+          {T.journal.guidanceHint}
         </Text>
         {guidance.map(g => (
           <View key={g.id} style={styles.journalCard}>
@@ -481,14 +507,14 @@ function JournalView({ onBack }: { onBack: () => void }) {
         ))}
         <TextInput
           style={styles.guidanceInput}
-          placeholder="e.g. How do I keep my prayer rule when I travel for work?"
+          placeholder={T.journal.questionPlaceholder}
           placeholderTextColor={colors.faint}
           multiline
           value={question}
           onChangeText={setQuestion}
         />
         <TouchableOpacity style={[styles.emptyBtn, !question.trim() && { opacity: 0.4 }]} onPress={addQuestion} disabled={!question.trim()}>
-          <Text style={styles.emptyBtnText}>＋  Add question</Text>
+          <Text style={styles.emptyBtnText}>{T.journal.addQuestion}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -538,19 +564,16 @@ function IncidentComposer({ onCancel, onSave }: {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.subHeader}>
-        <TouchableOpacity onPress={onCancel} hitSlop={10}><Text style={styles.linkGold}>Cancel</Text></TouchableOpacity>
-        <Text style={styles.subHeaderTitle}>New entry</Text>
+        <TouchableOpacity onPress={onCancel} hitSlop={10}><Text style={styles.linkGold}>{S.common.cancel}</Text></TouchableOpacity>
+        <Text style={styles.subHeaderTitle}>{T.composer.title}</Text>
         <TouchableOpacity onPress={save} disabled={!canSave} hitSlop={10}>
-          <Text style={[styles.linkGold, { color: canSave ? colors.gold : colors.muted }]}>Save</Text>
+          <Text style={[styles.linkGold, { color: canSave ? colors.gold : colors.muted }]}>{S.common.save}</Text>
         </TouchableOpacity>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={[styles.styleToggleRow, { paddingHorizontal: 0, paddingTop: 0, marginBottom: 14 }]}>
-            {([
-              { value: 'senses' as ExamStyle, label: 'By the Senses' },
-              { value: 'relational' as ExamStyle, label: 'Toward God & Others' },
-            ]).map(opt => {
+            {EXAM_STYLE_OPTIONS.map(opt => {
               const active = entryStyle === opt.value;
               return (
                 <TouchableOpacity key={opt.value} onPress={() => switchStyle(opt.value)}
@@ -561,7 +584,7 @@ function IncidentComposer({ onCancel, onSave }: {
             })}
           </View>
 
-          <Text style={styles.sectionLabel}>WHICH DOMAIN?</Text>
+          <Text style={styles.sectionLabel}>{T.composer.whichDomain}</Text>
           <View style={styles.domainGrid}>
             {domainList.map(cat => {
               const m = sectionMeta(cat);
@@ -582,7 +605,7 @@ function IncidentComposer({ onCancel, onSave }: {
           {!!category && catItems.length > 0 && (
             <>
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>
-                WHAT WAS IT?  <Text style={styles.labelHint}>(optional — tap to select)</Text>
+                {T.composer.whatWasIt}{'  '}<Text style={styles.labelHint}>{T.composer.whatWasItHint}</Text>
               </Text>
               {catItems.map(s => {
                 const active = sinId === s.id;
@@ -610,15 +633,15 @@ function IncidentComposer({ onCancel, onSave }: {
 
           <View style={styles.noteLabelRow}>
             <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>
-              WHAT HAPPENED?{catItems.length > 0 && <Text style={styles.labelHint}>  (optional)</Text>}
+              {T.composer.whatHappened}{catItems.length > 0 && <Text style={styles.labelHint}>{'  '}{T.composer.optionalHint}</Text>}
             </Text>
             {noteFocused && (
-              <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={10}><Text style={styles.linkGold}>Done</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={10}><Text style={styles.linkGold}>{S.common.done}</Text></TouchableOpacity>
             )}
           </View>
           <TextInput
             style={styles.noteInput}
-            placeholder={category === 'other' ? 'Describe what you want to confess…' : 'Describe the moment in your own words…'}
+            placeholder={category === 'other' ? T.composer.notePlaceholderOther : T.composer.notePlaceholder}
             placeholderTextColor={colors.faint}
             multiline
             value={note}
@@ -628,8 +651,7 @@ function IncidentComposer({ onCancel, onSave }: {
             textAlignVertical="top"
           />
           <Text style={styles.composerHint}>
-            🔒  Encrypted on your device and shown in your confession notes. It clears when you delete
-            your notes after confession.
+            {T.composer.hint}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -671,9 +693,9 @@ function ExaminationView({ onBack }: { onBack: () => void }) {
   const notedCount = [...checked.keys()].filter(id => styleIds.has(id)).length;
 
   const FREQ_OPTIONS: { label: string; value: SinFrequency; color: string }[] = [
-    { label: 'Once', value: 'once', color: colors.muted },
-    { label: 'Few times', value: 'few', color: colors.yellow },
-    { label: 'Often', value: 'often', color: colors.red },
+    { label: X.freqOption.once, value: 'once', color: colors.muted },
+    { label: X.freqOption.few, value: 'few', color: colors.yellow },
+    { label: X.freqOption.often, value: 'often', color: colors.red },
   ];
 
   const toggleFreq = (id: string, freq: SinFrequency) => {
@@ -690,15 +712,12 @@ function ExaminationView({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SubHeader title="Examination" onBack={onBack}
-        right={<Text style={styles.headerCount}>{notedCount} noted</Text>} />
+      <SubHeader title={X.screen.title} onBack={onBack}
+        right={<Text style={styles.headerCount}>{fmt(X.screen.noted, { n: notedCount })}</Text>} />
 
       {/* Style toggle — senses (Nepsis) vs relational (original Nepsis) */}
       <View style={styles.styleToggleRow}>
-        {([
-          { value: 'senses' as ExamStyle, label: 'By the Senses' },
-          { value: 'relational' as ExamStyle, label: 'Toward God & Others' },
-        ]).map(opt => {
+        {EXAM_STYLE_OPTIONS.map(opt => {
           const active = examStyle === opt.value;
           return (
             <TouchableOpacity key={opt.value} onPress={() => switchStyle(opt.value)}
@@ -730,7 +749,7 @@ function ExaminationView({ onBack }: { onBack: () => void }) {
           <meta.icon size={28} color={meta.color} />
           <View>
             <Text style={[styles.catHeaderTitle, { color: meta.color }]}>{meta.label}</Text>
-            <Text style={[styles.catHeaderCount, { color: meta.color }]}>{catItems.length} items to consider</Text>
+            <Text style={[styles.catHeaderCount, { color: meta.color }]}>{plural(X.screen.itemsToConsider, catItems.length)}</Text>
           </View>
         </View>
 
@@ -759,19 +778,19 @@ function ExaminationView({ onBack }: { onBack: () => void }) {
 
         <View style={styles.navRow}>
           <TouchableOpacity style={[styles.navBtn, { opacity: isFirst ? 0.3 : 1 }]} onPress={() => !isFirst && setCatIndex(i => i - 1)} disabled={isFirst}>
-            <Text style={styles.navBtnText}>← Prev</Text>
+            <Text style={styles.navBtnText}>{X.screen.prev}</Text>
           </TouchableOpacity>
           {!isLast ? (
             <TouchableOpacity style={[styles.navBtn, { backgroundColor: colors.gold, borderColor: colors.gold }]} onPress={() => setCatIndex(i => i + 1)}>
-              <Text style={[styles.navBtnText, { color: colors.navy }]}>Next →</Text>
+              <Text style={[styles.navBtnText, { color: colors.navy }]}>{X.screen.next}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={[styles.navBtn, { backgroundColor: colors.green, borderColor: colors.green }]} onPress={onBack}>
-              <Text style={[styles.navBtnText, { color: colors.navy }]}>✓ Done</Text>
+              <Text style={[styles.navBtnText, { color: colors.navy }]}>{X.screen.done}</Text>
             </TouchableOpacity>
           )}
         </View>
-        <Text style={styles.catProgress}>Category {catIndex + 1} of {cats.length}</Text>
+        <Text style={styles.catProgress}>{fmt(X.screen.progress, { current: catIndex + 1, total: cats.length })}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -808,16 +827,16 @@ function SessionView({ onBack, onComplete }: { onBack: () => void; onComplete: (
   const examItems: NoteItem[] = Object.entries(exam)
     .map(([id, freq]): NoteItem | null => {
       const sin = SIN_CATALOGUE.find(s => s.id === id);
-      if (sin) return { id: `exam:${id}`, category: sin.category, title: sin.name, detail: `${FREQ_LABEL[freq]} · ${sin.scripture}` };
+      if (sin) return { id: `exam:${id}`, category: sin.category, title: sin.name, detail: fmt(T.session.frequencyAndReference, { frequency: FREQ_LABEL[freq], reference: sin.scripture }) };
       const q = RELATIONAL_EXAMINATION.find(r => r.id === id);
       if (q) return { id: `exam:${id}`, category: q.category, title: q.text, detail: FREQ_LABEL[freq] };
       return null;
     })
     .filter((x): x is NoteItem => x !== null);
-  const journalItems: NoteItem[] = incidents.map(inc => ({ id: inc.id, category: inc.category, title: inc.title, detail: inc.note || undefined }));
+  const journalItems: NoteItem[] = incidents.map(inc => ({ id: inc.id, category: inc.category, title: incidentTitle(inc), detail: inc.note || undefined }));
   const sinItems = [...examItems, ...journalItems];
   const guidanceItems: NoteItem[] = guidance.map(g => ({ id: `guide:${g.id}`, title: g.text }));
-  const blessingItems: NoteItem[] = blessings.map(b => ({ id: `bless:${b.id}`, title: b.title, detail: b.reflection }));
+  const blessingItems: NoteItem[] = blessings.map(b => ({ id: `bless:${b.id}`, title: b.title === UNTITLED ? S.journal.untitled : b.title, detail: b.reflection }));
   const totalCount = sinItems.length + guidanceItems.length + blessingItems.length;
   const remaining = totalCount - spoken.size;
 
@@ -830,22 +849,19 @@ function SessionView({ onBack, onComplete }: { onBack: () => void; onComplete: (
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SubHeader title="In confession" onBack={onBack}
-        right={<Text style={styles.headerCount}>{totalCount > 0 ? `${remaining} left` : ''}</Text>} />
+      <SubHeader title={T.session.title} onBack={onBack}
+        right={<Text style={styles.headerCount}>{totalCount > 0 ? fmt(T.session.remaining, { n: remaining }) : ''}</Text>} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sessionIntro}>
-          Everything from your examination, journal, guidance notes, and anything flagged in your
-          Spiritual Journal, grouped together. Tap each as you speak it aloud. Everything stays on this
-          device only.
+          {T.session.intro}
         </Text>
 
         {loaded && totalCount === 0 && (
           <View style={styles.emptyCard}>
             <Text style={{ fontSize: 32, marginBottom: 10 }}>🕊</Text>
-            <Text style={styles.emptyCardTitle}>Nothing noted this period</Text>
+            <Text style={styles.emptyCardTitle}>{T.session.emptyTitle}</Text>
             <Text style={styles.emptyCardBody}>
-              Whatever you mark in your examination, log in your journal, or bring as a question appears
-              here, ready to speak. You can still confess freely from the heart.
+              {T.session.emptyBody}
             </Text>
           </View>
         )}
@@ -873,11 +889,11 @@ function SessionView({ onBack, onComplete }: { onBack: () => void; onComplete: (
         ))}
 
         <View style={styles.sessionNote}>
-          <Text style={styles.sessionNoteText}>This is a guide, not a script. If something comes to mind that isn't listed, speak it freely.</Text>
+          <Text style={styles.sessionNoteText}>{T.session.guideNote}</Text>
         </View>
 
         <TouchableOpacity style={[styles.bigBtn, { backgroundColor: colors.green }]} onPress={onComplete}>
-          <Text style={[styles.bigBtnText, { color: colors.navy }]}>✓  Confession complete</Text>
+          <Text style={[styles.bigBtnText, { color: colors.navy }]}>{T.session.complete}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -890,7 +906,7 @@ function SessionView({ onBack, onComplete }: { onBack: () => void; onComplete: (
 // then each recorded confession, expandable to what was noted that day.
 
 const fmtDay = (ymd: string) =>
-  new Date(`${ymd}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  fmtDate(new Date(`${ymd}T12:00:00`), { month: 'short', day: 'numeric', year: 'numeric' });
 
 function PatternGroup({ title, hint, items, color }: { title: string; hint: string; items: PatternItem[]; color: string }) {
   return (
@@ -907,8 +923,8 @@ function PatternGroup({ title, hint, items, color }: { title: string; hint: stri
               <Text style={styles.patternName}>{p.name}</Text>
               <Text style={styles.patternMeta}>
                 {p.status === 'faded'
-                  ? `Last confessed ${fmtDay(p.lastDate)} · ${p.appearances} of ${p.total}`
-                  : `${p.appearances} of ${p.total} confession${p.total === 1 ? '' : 's'} · ${m.label}`}
+                  ? fmt(T.history.lastConfessed, { date: fmtDay(p.lastDate), appearances: p.appearances, total: p.total })
+                  : plural(T.history.appearedIn, p.total, { appearances: p.appearances, domain: m.label })}
               </Text>
             </View>
           </View>
@@ -931,26 +947,24 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   const faded = patterns.filter(p => p.status === 'faded');
 
   const remove = (r: ConfessionRecord) => {
-    confirmDestructive('Remove this record', `Delete the notes saved from ${fmtDay(r.date)}? This cannot be undone.`, 'Delete',
+    confirmDestructive(T.history.removeTitle, fmt(T.history.removeBody, { date: fmtDay(r.date) }), S.common.delete,
       async () => setRecords(await deleteHistoryRecord(r.id)));
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SubHeader title="Confession history" onBack={onBack} />
+      <SubHeader title={T.history.title} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sessionIntro}>
-          Each time you tap “Record this confession”, your notes are saved here as they stood.
-          Encrypted, on this phone only — never sent anywhere, not even to your father.
+          {T.history.intro}
         </Text>
 
         {loaded && records.length === 0 && (
           <View style={styles.emptyCard}>
             <View style={{ marginBottom: 10, opacity: 0.6 }}><CalendarIcon size={32} color={colors.gold} /></View>
-            <Text style={styles.emptyCardTitle}>No history yet</Text>
+            <Text style={styles.emptyCardTitle}>{T.history.emptyTitle}</Text>
             <Text style={styles.emptyCardBody}>
-              After your next confession, tap “Record this confession” and what you noted will be kept here
-              to look back on.
+              {T.history.emptyBody}
             </Text>
           </View>
         )}
@@ -958,18 +972,18 @@ function HistoryView({ onBack }: { onBack: () => void }) {
         {records.length > 0 && (
           <View style={styles.catCard}>
             <Text style={[styles.catLabel, { color: colors.goldLight, marginBottom: 4 }]}>
-              PATTERNS ACROSS {records.length} CONFESSION{records.length === 1 ? '' : 'S'}
+              {plural(T.history.patternsAcross, records.length)}
             </Text>
-            <PatternGroup title="Still recurring" color={colors.red} items={recurring}
-              hint={records.length < 2 ? 'Patterns show once you have recorded two confessions.' : 'Nothing from before came back this time.'} />
-            <PatternGroup title="First time" color={colors.gold} items={first}
-              hint="Nothing new in your latest confession." />
-            <PatternGroup title="Fallen away" color={colors.green} items={faded}
-              hint={records.length < 2 ? 'Once there is more than one confession here, what you stopped confessing shows up.' : 'Everything confessed before was confessed again.'} />
+            <PatternGroup title={T.history.recurringTitle} color={colors.red} items={recurring}
+              hint={records.length < 2 ? T.history.recurringHintTooFew : T.history.recurringHintNone} />
+            <PatternGroup title={T.history.firstTitle} color={colors.gold} items={first}
+              hint={T.history.firstHint} />
+            <PatternGroup title={T.history.fadedTitle} color={colors.green} items={faded}
+              hint={records.length < 2 ? T.history.fadedHintTooFew : T.history.fadedHintNone} />
           </View>
         )}
 
-        {records.length > 0 && <Text style={styles.sectionLabel}>EACH CONFESSION</Text>}
+        {records.length > 0 && <Text style={styles.sectionLabel}>{T.history.eachConfession}</Text>}
         {records.map(r => {
           const items = [...recordItems(r).values()];
           const isOpen = open === r.id;
@@ -980,8 +994,11 @@ function HistoryView({ onBack }: { onBack: () => void }) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.journalCardTitle}>{fmtDay(r.date)}</Text>
                   <Text style={styles.journalCardDate}>
-                    {sinCount} confessed · {r.incidents.length} journal note{r.incidents.length === 1 ? '' : 's'}
-                    {r.guidance.length ? ` · ${r.guidance.length} question${r.guidance.length === 1 ? '' : 's'}` : ''}
+                    {[
+                      fmt(T.history.summaryConfessed, { n: sinCount }),
+                      plural(T.history.summaryNotes, r.incidents.length),
+                      ...(r.guidance.length ? [plural(T.history.summaryQuestions, r.guidance.length)] : []),
+                    ].join(' · ')}
                     {'  '}{isOpen ? '▴' : '▾'}
                   </Text>
                 </View>
@@ -990,7 +1007,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
               {isOpen && (
                 <View style={{ marginTop: 4 }}>
                   {items.length === 0 && r.guidance.length === 0 && (
-                    <Text style={styles.patternHint}>Nothing was noted for this confession.</Text>
+                    <Text style={styles.patternHint}>{T.history.nothingNoted}</Text>
                   )}
                   {items.map((it, i) => {
                     const m = sectionMeta(it.category);
@@ -1007,11 +1024,11 @@ function HistoryView({ onBack }: { onBack: () => void }) {
                   {/* A free-text entry's title is its first line, so only quote
                       the note when it says more than the item line already did. */}
                   {r.incidents.filter(i => i.note && i.note.trim() !== i.title.trim()).map(i => (
-                    <Text key={i.id} style={styles.journalCardBody}>“{i.note}”</Text>
+                    <Text key={i.id} style={styles.journalCardBody}>{fmt(T.history.quotedNote, { note: i.note })}</Text>
                   ))}
                   {r.guidance.length > 0 && (
                     <>
-                      <Text style={[styles.patternGroupTitle, { color: colors.gold, marginTop: 6 }]}>Questions brought</Text>
+                      <Text style={[styles.patternGroupTitle, { color: colors.gold, marginTop: 6 }]}>{T.history.questionsBrought}</Text>
                       {r.guidance.map(g => <Text key={g.id} style={styles.journalCardBody}>{g.text}</Text>)}
                     </>
                   )}
@@ -1073,9 +1090,9 @@ function CompleteView({ onBack }: { onBack: () => void }) {
 
   function handleDelete() {
     confirmDestructive(
-      'Delete confession notes',
-      'Your examination, journal, and guidance notes for this period will be permanently deleted from this device, and any journal entries flagged for confession will be unmarked. This cannot be undone.',
-      'Delete permanently',
+      T.complete.deleteTitle,
+      T.complete.deleteBody,
+      T.complete.deleteConfirm,
       async () => {
         await Promise.all([
           clearIncidents(), clearExam(), clearGuidance(),
@@ -1093,19 +1110,17 @@ function CompleteView({ onBack }: { onBack: () => void }) {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.greenCanvas }]}>
       <ScrollView contentContainerStyle={{ padding: 28, alignItems: 'center' }}>
         <Text style={styles.completeCross}>✝︎</Text>
-        <Text style={styles.completeTitle}>Glory to God</Text>
-        <Text style={styles.completeVerse}>
+        <Text style={styles.completeTitle}>{T.complete.title}</Text>
+        {/* Scripture: not translated by the app, so it stays in English and
+            reads left-to-right; it keeps its centring. */}
+        <Text style={[styles.completeVerse, ltrText, { textAlign: 'center' }]}>
           "If we confess our sins, He is faithful and just to forgive us our sins and to cleanse us from all unrighteousness."
         </Text>
-        <Text style={styles.completeRef}>1 John 1:9</Text>
+        <Text style={styles.completeRef}>{T.complete.verseReference}</Text>
 
         <View style={styles.afterCard}>
-          <Text style={[styles.catLabel, { color: colors.goldLight, marginBottom: 12 }]}>AFTER CONFESSION</Text>
-          {[
-            'Receive Holy Communion if you have fasted and are permitted',
-            'Fulfill your epitimia as instructed by your Father of Confession',
-            'Update your Rule with any changes he gave you, if applicable',
-          ].map((s, i) => (
+          <Text style={[styles.catLabel, { color: colors.goldLight, marginBottom: 12 }]}>{T.complete.afterTitle}</Text>
+          {T.complete.afterSteps.map((s, i) => (
             <View key={i} style={styles.afterStep}>
               <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
               <Text style={styles.afterStepText}>{s}</Text>
@@ -1122,13 +1137,13 @@ function CompleteView({ onBack }: { onBack: () => void }) {
         >
           <Text style={[styles.bigBtnText, { color: recorded ? colors.green : colors.navy }]}>
             {recorded
-              ? `✓ ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} recorded as your confession`
-              : recording ? 'Recording…' : '✝︎  Record this confession'}
+              ? fmt(T.complete.recorded, { date: fmtDate(new Date(), { month: 'long', day: 'numeric' }) })
+              : recording ? T.complete.recording : T.complete.record}
           </Text>
         </TouchableOpacity>
         {!recorded && (
           <Text style={styles.recordHint}>
-            Nothing is logged until you tap this — if you got here by accident, just go back.
+            {T.complete.recordHint}
           </Text>
         )}
         <TouchableOpacity
@@ -1137,18 +1152,18 @@ function CompleteView({ onBack }: { onBack: () => void }) {
           disabled={vitalsReset}
         >
           <Text style={[styles.bigBtnText, { color: colors.goldLight }]}>
-            {vitalsReset ? '✓ Vitals now track from today' : '↻  Reset my Spiritual Vitals'}
+            {vitalsReset ? T.complete.vitalsReset : T.complete.resetVitals}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.bigBtn, { backgroundColor: colors.red, opacity: notesDeleted ? 0.55 : 1 }]} onPress={handleDelete} disabled={notesDeleted}>
           {/* Literal, not colors.cream: cream is sepia ink on the light theme,
               which vanished into the red. White reads on red in both. */}
           <Text style={[styles.bigBtnText, { color: '#F5F0E8' }]}>
-            {notesDeleted ? '✓ Notes permanently deleted' : '🗑  Delete my confession notes'}
+            {notesDeleted ? T.complete.notesDeleted : T.complete.deleteNotes}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.bigBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]} onPress={onBack}>
-          <Text style={[styles.bigBtnText, { color: colors.textSecond }]}>Return to confession</Text>
+          <Text style={[styles.bigBtnText, { color: colors.textSecond }]}>{T.complete.returnToConfession}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

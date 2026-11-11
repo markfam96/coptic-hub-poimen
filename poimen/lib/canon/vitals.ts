@@ -61,12 +61,15 @@ export interface VitalStat {
 // Adherence per category across recorded history, optionally from a reset
 // epoch (the user can reset vitals after confession — tracking then reads
 // "since that date"). pct stays null where nothing in the window was due.
+// `labels` is the translated row name per category key; without it the English
+// in VITAL_CATEGORIES stands (history.ts passes the session's language).
 export function computeVitals(
   history: CanonHistory,
   since?: string | null,
   confession?: ConfessionInput,
+  labels: Record<string, string> = {},
 ): VitalStat[] {
-  const stats: VitalStat[] = VITAL_CATEGORIES.map(c => ({ key: c.key, label: c.label, due: 0, done: 0, pct: null }));
+  const stats: VitalStat[] = VITAL_CATEGORIES.map(c => ({ key: c.key, label: labels[c.key] ?? c.label, due: 0, done: 0, pct: null }));
   for (const [date, rec] of Object.entries(history)) {
     if (since && date < since) continue;
     VITAL_CATEGORIES.forEach((c, i) => {

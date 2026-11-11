@@ -8,6 +8,10 @@ import { useRouter } from 'expo-router';
 import * as db from '@/lib/db';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { EyeIcon, EyeOffIcon } from '@/components/ui/TabIcons';
+import { S } from '@/lib/i18n';
+import { localizeAuthError } from '@/lib/auth';
+
+const T = S.auth.resetPassword;
 
 // Reached only via the poimen://auth-callback recovery link, which has
 // already exchanged itself for a live session (see lib/auth.tsx) — this
@@ -22,12 +26,12 @@ export default function ResetPasswordScreen() {
 
   async function handleSubmit() {
     setError('');
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-    if (password !== confirm) { setError('Passwords do not match.'); return; }
+    if (password.length < 6) { setError(T.errTooShort); return; }
+    if (password !== confirm) { setError(T.errMismatch); return; }
     setLoading(true);
     const { error } = await db.updatePassword(password);
     setLoading(false);
-    if (error) { setError(error); return; }
+    if (error) { setError(localizeAuthError(error)); return; }
     router.replace('/(tabs)');
   }
 
@@ -36,14 +40,14 @@ export default function ResetPasswordScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.content}>
         <View style={styles.brand}>
           <Text style={styles.brandCross}>✝︎</Text>
-          <Text style={styles.brandTitle}>Set a new password</Text>
+          <Text style={styles.brandTitle}>{T.title}</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.passwordRow}>
             <TextInput
               style={styles.passwordInput}
-              placeholder="New password"
+              placeholder={T.newPassword}
               placeholderTextColor={colors.faint}
               value={password}
               onChangeText={setPassword}
@@ -63,7 +67,7 @@ export default function ResetPasswordScreen() {
 
           <TextInput
             style={styles.input}
-            placeholder="Confirm new password"
+            placeholder={T.confirmPassword}
             placeholderTextColor={colors.faint}
             value={confirm}
             onChangeText={setConfirm}
@@ -79,7 +83,7 @@ export default function ResetPasswordScreen() {
           >
             {loading
               ? <ActivityIndicator color={colors.navy} />
-              : <Text style={styles.submitBtnText}>SAVE PASSWORD</Text>}
+              : <Text style={styles.submitBtnText}>{T.submit}</Text>}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

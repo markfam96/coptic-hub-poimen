@@ -7,6 +7,7 @@
 // device-local fact, not a server one. lib/survey/prompt.ts owns that.
 
 import { supabase } from '@/lib/supabase';
+import { S } from '@/lib/i18n';
 
 export type SurveyFrequency = 'daily' | 'weekly_several' | 'weekly' | 'rarely';
 export type SurveyConsistency = 'yes_clearly' | 'a_little' | 'no_change' | 'no_canon';
@@ -48,7 +49,7 @@ export async function submitSurvey(
     withholding_detail: answers.withholding_detail?.trim() || null,
     ...context,
   });
-  return { error: error ? 'Could not send just now — please try again.' : null };
+  return { error: error ? S.servant.data.sendFailed : null };
 }
 
 // Admin only; RLS returns nothing to anyone else rather than erroring.

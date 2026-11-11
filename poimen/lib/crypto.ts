@@ -18,6 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as ExpoCrypto from 'expo-crypto';
 import { Platform } from 'react-native';
 import { classifyCiphertext, BOX_PREFIX, LEGACY_NOTE_PREFIX, keypairSlot, SHARED_KEYPAIR_SLOT } from './crypto-format';
+import { S } from './i18n';
 
 export { classifyCiphertext, needsRewrap } from './crypto-format';
 
@@ -313,7 +314,7 @@ async function openFromSender(value: string, senderPublicKeyB64: string): Promis
 // Non-box values pass through unchanged (pre-encryption rows, demo fixtures).
 export async function decryptFromSender(value: string, senderPublicKeyB64: string): Promise<string> {
   if (classifyCiphertext(value) !== 'box') return value;
-  return (await openFromSender(value, senderPublicKeyB64)) ?? '[could not decrypt]';
+  return (await openFromSender(value, senderPublicKeyB64)) ?? S.auth.encryption.couldNotDecrypt;
 }
 
 // Decrypt self-encrypted body (sender = self).
@@ -342,11 +343,11 @@ export async function decryptNote(value: string): Promise<string> {
     case 'box': {
       const kp = await getOrCreateBoxKeypair();
       return (await openFromSender(value, encodeBase64(kp.publicKey)))
-        ?? '[note could not be decrypted]';
+        ?? S.auth.encryption.noteCouldNotDecrypt;
     }
     case 'legacy':
       return (await decryptLegacyNote(value))
-        ?? '[note is locked to the device it was written on]';
+        ?? S.auth.encryption.noteLockedToDevice;
     default:
       return value;
   }

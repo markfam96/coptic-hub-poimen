@@ -6,6 +6,7 @@
 // problem inline.)
 
 import { Alert, Platform } from 'react-native';
+import { S } from '@/lib/i18n';
 
 export function confirmDestructive(
   title: string,
@@ -19,7 +20,7 @@ export function confirmDestructive(
     return;
   }
   Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: S.common.cancel, style: 'cancel' },
     { text: confirmText, style: 'destructive', onPress: onConfirm },
   ]);
 }

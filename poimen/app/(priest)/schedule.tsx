@@ -19,7 +19,7 @@ import * as H from '@/lib/haptics';
 import * as db from '@/lib/db';
 import type { AppointmentType, AvailabilityRuleRow, Appointment, AvailabilityException } from '@/lib/db';
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, formatMinute, formatMinuteRange, formatTime, formatDayLabel,
+  WEEKDAYS, WEEKDAYS_SHORT, WEEKDAY_INITIALS, formatMinute, formatMinuteRange, formatTime, formatDayLabel,
   monthCells, dateKey, closuresOn, isClosedAllDay, extraWindowsOn, SCHEDULE_HORIZON_DAYS,
 } from '@/lib/scheduling/slots';
 import {
@@ -31,6 +31,9 @@ import {
   calendarSyncSupported, loadSyncState, listWritableCalendars, chooseCalendar,
   reconcileCalendar, type WritableCalendar, type ReconcileResult,
 } from '@/lib/scheduling/calendar-sync';
+import { S, fmt, plural, fmtDate, GLYPH, isRTL } from '@/lib/i18n';
+
+const T = S.schedule;
 
 const DURATION_OPTS = [15, 30, 45, 60, 90];
 
@@ -52,13 +55,13 @@ const minutesFor = (label: string) => TIME_VALUES[TIME_LABELS.indexOf(label)] ??
 const CALENDAR_MONTHS = Math.ceil(SCHEDULE_HORIZON_DAYS / 30);
 const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
-const monthLabel = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const monthLabel = (d: Date) => fmtDate(d, { month: 'long', year: 'numeric' });
 
 // ── Demo seed ────────────────────────────────────────────────
 const demoTypes = (): AppointmentType[] => ([
-  { id: 'dt-conf', priest_id: 'demo', label: 'Holy Confession', duration_minutes: 30, active: true, sort: 0, created_at: '' },
-  { id: 'dt-visit', priest_id: 'demo', label: 'Home Visitation', duration_minutes: 60, active: true, sort: 1, created_at: '' },
-  { id: 'dt-meet', priest_id: 'demo', label: 'Meeting', duration_minutes: 45, active: false, sort: 2, created_at: '' },
+  { id: 'dt-conf', priest_id: 'demo', label: S.appointments.demo.typeConfession, duration_minutes: 30, active: true, sort: 0, created_at: '' },
+  { id: 'dt-visit', priest_id: 'demo', label: S.appointments.demo.typeVisit, duration_minutes: 60, active: true, sort: 1, created_at: '' },
+  { id: 'dt-meet', priest_id: 'demo', label: T.demo.typeMeeting, duration_minutes: 45, active: false, sort: 2, created_at: '' },
 ]);
 const demoRules = (): AvailabilityRuleRow[] => ([
   { id: 'dr-1', priest_id: 'demo', type_id: 'dt-conf', weekday: 0, start_minute: 840, end_minute: 960, active: true, created_at: '' },
@@ -68,8 +71,8 @@ const demoAppts = (): Appointment[] => {
   const soon = new Date(); soon.setDate(soon.getDate() + 3); soon.setHours(14, 0, 0, 0);
   const later = new Date(); later.setDate(later.getDate() + 5); later.setHours(18, 0, 0, 0);
   return [
-    { id: 'da-1', priest_id: 'demo', congregant_id: 'demo-pb', type_id: 'dt-conf', type_label: 'Holy Confession', starts_at: soon.toISOString(), duration_minutes: 30, status: 'requested', note: 'Would like to confess before the feast.', created_at: '', updated_at: '' },
-    { id: 'da-2', priest_id: 'demo', congregant_id: 'demo-sg', type_id: 'dt-visit', type_label: 'Home Visitation', starts_at: later.toISOString(), duration_minutes: 60, status: 'confirmed', note: null, created_at: '', updated_at: '' },
+    { id: 'da-1', priest_id: 'demo', congregant_id: 'demo-pb', type_id: 'dt-conf', type_label: S.appointments.demo.typeConfession, starts_at: soon.toISOString(), duration_minutes: 30, status: 'requested', note: T.demo.requestNote, created_at: '', updated_at: '' },
+    { id: 'da-2', priest_id: 'demo', congregant_id: 'demo-sg', type_id: 'dt-visit', type_label: S.appointments.demo.typeVisit, starts_at: later.toISOString(), duration_minutes: 60, status: 'confirmed', note: null, created_at: '', updated_at: '' },
   ];
 };
 const demoExceptions = (): AvailabilityException[] => {
@@ -79,12 +82,12 @@ const demoExceptions = (): AvailabilityException[] => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
   return [
-    { id: 'de-1', priest_id: 'demo', on_date: key(9), start_minute: null, end_minute: null, kind: 'block', type_id: null, note: 'Travelling', created_at: '' },
+    { id: 'de-1', priest_id: 'demo', on_date: key(9), start_minute: null, end_minute: null, kind: 'block', type_id: null, note: T.demo.closureNote, created_at: '' },
     { id: 'de-2', priest_id: 'demo', on_date: key(4), start_minute: 840, end_minute: 900, kind: 'block', type_id: null, note: null, created_at: '' },
   ];
 };
 const DEMO_NAMES: Record<string, string> = {
-  'demo-pb': 'Peter Botros', 'demo-sg': 'Sara Girgis', 'demo-mh': 'Michael Hanna', 'demo-mm': 'Mary Mikhail',
+  'demo-pb': T.demo.names.pb, 'demo-sg': T.demo.names.sg, 'demo-mh': T.demo.names.mh, 'demo-mm': T.demo.names.mm,
 };
 
 export default function ScheduleScreen() {
@@ -147,8 +150,8 @@ export default function ScheduleScreen() {
   // warning instead of a green "writing to…" over a calendar getting nothing.
   const noteSync = (r: ReconcileResult | null) => {
     if (!r) return;
-    if (r.permissionLost) setSyncWarn('Calendar access was turned off in Settings — bookings are NOT being written, so Calendly may double-book. Allow calendar access for Nepsis to fix this.');
-    else if (r.failed > 0) setSyncWarn(`Couldn't write ${r.failed} booking${r.failed === 1 ? '' : 's'} to the calendar — check that it still exists and try again.`);
+    if (r.permissionLost) setSyncWarn(T.sync.permissionLost);
+    else if (r.failed > 0) setSyncWarn(plural(T.sync.writeFailed, r.failed));
     else setSyncWarn('');
   };
 
@@ -177,7 +180,7 @@ export default function ScheduleScreen() {
     setOpen(o); setTypes(t); setRules(r); setAppts(a); setExceptions(ex);
     setCalendly(cal); setCalendlyDraft(cal ?? '');
     setMode(m);
-    const nameMap = Object.fromEntries(flock.map(m => [m.id, m.full_name ?? 'Member']));
+    const nameMap = Object.fromEntries(flock.map(m => [m.id, m.full_name ?? T.memberFallback]));
     setNames(nameMap);
     if (!ruleTypeId && t.length) setRuleTypeId(t[0].id);
     setLoading(false);
@@ -186,9 +189,9 @@ export default function ScheduleScreen() {
     // member cancelling happens on THEIR device — this is where the priest's
     // calendar catches up). Fire-and-forget; the screen never waits on it.
     const sync = await loadSyncState();
-    setSyncCal(sync.calendarId ? { id: sync.calendarId, title: sync.calendarTitle ?? 'calendar' } : null);
+    setSyncCal(sync.calendarId ? { id: sync.calendarId, title: sync.calendarTitle ?? T.sync.calendarFallback } : null);
     if (sync.calendarId) {
-      reconcileCalendar(a, id => nameMap[id] ?? 'Member').then(noteSync).catch(() => {});
+      reconcileCalendar(a, id => nameMap[id] ?? T.memberFallback).then(noteSync).catch(() => {});
     }
   }, [demoMode, user, ruleTypeId]);
 
@@ -205,7 +208,7 @@ export default function ScheduleScreen() {
   const moveTo = (v: number, start: number, setEnd: (n: number) => void) =>
     setEnd(Math.max(v, Math.min(1440, start + SLIDER_STEP)));
 
-  const memberName = (id: string) => names[id] ?? 'Member';
+  const memberName = (id: string) => names[id] ?? T.memberFallback;
   const typeLabel = (id: string | null) => types.find(t => t.id === id)?.label ?? '';
 
   // ── Booking mode ──
@@ -226,8 +229,8 @@ export default function ScheduleScreen() {
       // scheduling_mode migration hasn't been applied to this database).
       setMode(prev);
       setModeErr(/scheduling_mode/.test(error)
-        ? 'The app’s database is missing an update (scheduling_mode) — apply the latest migration and try again.'
-        : `Couldn’t save: ${error}`);
+        ? T.mode.migrationMissing
+        : fmt(T.mode.saveFailed, { error }));
     }
   }
 
@@ -248,7 +251,7 @@ export default function ScheduleScreen() {
     setCalendlyErr(''); setCalendlyMsg('');
     const url = normalizeCalendlyUrl(calendlyDraft);
     if (!url) {
-      setCalendlyErr("That doesn't look like a Calendly link — it should start with calendly.com/…");
+      setCalendlyErr(T.calendly.errInvalid);
       return;
     }
     if (demoMode) await saveDemoCalendly(url);
@@ -257,11 +260,11 @@ export default function ScheduleScreen() {
       if (error) { setCalendlyErr(error); return; }
     }
     setCalendly(url); setCalendlyDraft(url);
-    setCalendlyMsg('Saved — your flock now sees a “Book on Calendly” option.');
+    setCalendlyMsg(T.calendly.saved);
   }
 
   function removeCalendly() {
-    confirmDestructive('Remove Calendly link', 'Members will no longer see the “Book on Calendly” option. Your Calendly account itself is untouched.', 'Remove', async () => {
+    confirmDestructive(T.calendly.removeConfirmTitle, T.calendly.removeConfirmBody, S.common.remove, async () => {
       setCalendlyErr(''); setCalendlyMsg('');
       if (demoMode) await saveDemoCalendly(null);
       else if (user) {
@@ -269,7 +272,7 @@ export default function ScheduleScreen() {
         if (error) { setCalendlyErr(error); return; }
       }
       setCalendly(null); setCalendlyDraft('');
-      setCalendlyMsg('Calendly link removed.');
+      setCalendlyMsg(T.calendly.removed);
     });
   }
 
@@ -292,7 +295,7 @@ export default function ScheduleScreen() {
     if (!demoMode) await db.updateAppointmentType(t.id, { active: !t.active });
   }
   function removeType(t: AppointmentType) {
-    confirmDestructive('Delete type', `Remove "${t.label}"? Existing appointments keep their label.`, 'Delete', async () => {
+    confirmDestructive(T.types.deleteConfirmTitle, fmt(T.types.deleteConfirmBody, { label: t.label }), S.common.delete, async () => {
       setTypes(p => p.filter(x => x.id !== t.id));
       setRules(p => p.filter(x => x.type_id !== t.id));
       if (ruleTypeId === t.id) setRuleTypeId(null);
@@ -303,8 +306,8 @@ export default function ScheduleScreen() {
   // ── Rules ──
   async function addRule() {
     setRuleErr('');
-    if (!ruleTypeId) { setRuleErr('Pick an appointment type first.'); return; }
-    if (ruleEnd <= ruleStart) { setRuleErr('End time must be after the start time.'); return; }
+    if (!ruleTypeId) { setRuleErr(T.weekly.errPickType); return; }
+    if (ruleEnd <= ruleStart) { setRuleErr(T.weekly.errEndBeforeStart); return; }
     H.tap();
     if (demoMode) {
       setRules(p => [...p, { id: `dr-${Date.now()}`, priest_id: 'demo', type_id: ruleTypeId, weekday: ruleWeekday, start_minute: ruleStart, end_minute: ruleEnd, active: true, created_at: '' }]);
@@ -319,7 +322,7 @@ export default function ScheduleScreen() {
     if (!demoMode) await db.updateAvailabilityRule(r.id, { active: !r.active });
   }
   function removeRule(r: AvailabilityRuleRow) {
-    confirmDestructive('Delete window', `Remove ${WEEKDAYS[r.weekday]} ${formatMinuteRange(r.start_minute, r.end_minute)}?`, 'Delete', async () => {
+    confirmDestructive(T.weekly.deleteConfirmTitle, fmt(T.weekly.deleteConfirmBody, { day: WEEKDAYS[r.weekday], range: formatMinuteRange(r.start_minute, r.end_minute) }), S.common.delete, async () => {
       setRules(p => p.filter(x => x.id !== r.id));
       if (!demoMode) await db.deleteAvailabilityRule(r.id);
     });
@@ -340,7 +343,7 @@ export default function ScheduleScreen() {
 
   const failed = (msg: string | null, revert: AvailabilityException[]) => {
     setExceptions(revert);
-    setExErr(msg ?? 'Could not save that — check your connection and try again.');
+    setExErr(msg ?? T.days.errSave);
   };
 
   // Closing the whole day supersedes any partial closures on it. The all-day row
@@ -368,8 +371,8 @@ export default function ScheduleScreen() {
 
   async function closePartOfDay(date: Date) {
     setExErr('');
-    if (exEnd <= exStart) { setExErr('End time must be after the start time.'); return; }
-    if (isClosedAllDay(exceptions, date)) { setExErr('That day is already closed entirely.'); return; }
+    if (exEnd <= exStart) { setExErr(T.weekly.errEndBeforeStart); return; }
+    if (isClosedAllDay(exceptions, date)) { setExErr(T.days.errAlreadyClosed); return; }
     H.tap();
     const on_date = dateKey(date);
     const before = exceptions;
@@ -402,9 +405,9 @@ export default function ScheduleScreen() {
   async function openExtraHours(date: Date) {
     setAddErr('');
     const typeId = addTypeId ?? activeTypes[0]?.id ?? null;
-    if (!typeId) { setAddErr('Add an active appointment type first.'); return; }
-    if (addEnd <= addStart) { setAddErr('End time must be after the start time.'); return; }
-    if (isClosedAllDay(exceptions, date)) { setAddErr('That day is closed — reopen it first.'); return; }
+    if (!typeId) { setAddErr(T.days.errNeedType); return; }
+    if (addEnd <= addStart) { setAddErr(T.weekly.errEndBeforeStart); return; }
+    if (isClosedAllDay(exceptions, date)) { setAddErr(T.days.errClosedReopen); return; }
     H.tap();
     const on_date = dateKey(date);
     const before = exceptions;
@@ -449,7 +452,7 @@ export default function ScheduleScreen() {
       // booking the server never confirmed.
       const { error } = await db.respondAppointment(a.id, confirm);
       if (error) {
-        setApptErr('That request changed before you responded — the list has been refreshed.');
+        setApptErr(T.requests.changed);
         await load();
         return;
       }
@@ -459,7 +462,7 @@ export default function ScheduleScreen() {
     }
   }
   function cancelAppt(a: Appointment) {
-    confirmDestructive('Cancel appointment', `Cancel the ${a.type_label} with ${memberName(a.congregant_id)}?`, 'Cancel it', async () => {
+    confirmDestructive(T.upcoming.cancelConfirmTitle, fmt(T.upcoming.cancelConfirmBody, { type: a.type_label, name: memberName(a.congregant_id) }), T.upcoming.cancelConfirmAction, async () => {
       setApptErr('');
       const next = appts.map(x => x.id === a.id ? { ...x, status: 'cancelled' as Appointment['status'] } : x);
       setAppts(next);
@@ -468,7 +471,7 @@ export default function ScheduleScreen() {
         if (error) {
           // Server still holds the booking — put the screen (and calendar)
           // back in line with it rather than reopening a time that is taken.
-          setApptErr('Could not cancel — the list has been refreshed.');
+          setApptErr(T.upcoming.cancelFailed);
           await load();
           return;
         }
@@ -494,14 +497,14 @@ export default function ScheduleScreen() {
     const res = await reconcileCalendar(appts, memberName).catch(() => null);
     noteSync(res);
     setSyncMsg(res && res.added > 0
-      ? `On. ${res.added} upcoming appointment${res.added === 1 ? '' : 's'} added to “${c.title}”.`
-      : `On — confirmed bookings are written to “${c.title}”.`);
+      ? plural(T.sync.turnedOnAdded, res.added, { title: c.title })
+      : fmt(T.sync.turnedOn, { title: c.title }));
   }
   async function disableCalendarSync() {
     H.tap();
     await chooseCalendar(null);
     setSyncCal(null); setCalChoices(null);
-    setSyncMsg('Off. Events already on the calendar were left in place.');
+    setSyncMsg(T.sync.turnedOff);
   }
 
   const todayKey = dateKey(new Date());
@@ -533,20 +536,20 @@ export default function ScheduleScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.topbar}>
-          <TouchableOpacity style={[styles.chipBtn, { marginRight: 12 }]} hitSlop={8}
+          <TouchableOpacity style={[styles.chipBtn, { marginEnd: 12 }]} hitSlop={8}
             onPress={() => { H.tap(); navigation.dispatch(DrawerActions.openDrawer()); }}>
             <Text style={styles.chipBtnText}>☰</Text>
           </TouchableOpacity>
-          <Text style={styles.pageTitle}>Schedule</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
 
         {/* Booking mode — one place members book, never two. Two live systems
             meant two availability calendars drifting apart and double-booked
             times; the priest picks a lane instead. */}
-        <Card title="How Members Book" titleIcon="✦">
+        <Card title={T.mode.title} titleIcon="✦">
           {(([
-            ['app', 'In this app', 'You set availability below; members request open slots and you confirm each one.'],
-            ['calendly', 'Through my Calendly', 'Members book on your Calendly page. Nothing to maintain here — Calendly is the one source of truth.'],
+            ['app', T.mode.appTitle, T.mode.appSub],
+            ['calendly', T.mode.calendlyTitle, T.mode.calendlySub],
           ] as [SchedulingMode, string, string][])).map(([m, title, sub]) => (
             <TouchableOpacity key={m} style={[styles.modeOpt, mode === m && styles.modeOptOn]} onPress={() => pickMode(m)} activeOpacity={0.8}>
               <Text style={[styles.modeRadio, mode === m && { color: colors.gold }]}>{mode === m ? '◉' : '○'}</Text>
@@ -559,7 +562,7 @@ export default function ScheduleScreen() {
           {modeErr ? <Text style={styles.errText}>{modeErr}</Text> : null}
           {mode === 'calendly' && (
             <Text style={styles.hint}>
-              Requests and appointments already made in the app stay below until they play out — only new in-app requests stop.
+              {T.mode.calendlyHint}
             </Text>
           )}
         </Card>
@@ -569,34 +572,34 @@ export default function ScheduleScreen() {
         <TouchableOpacity activeOpacity={0.8} onPress={toggleOpen} style={[styles.masterCard, open ? styles.masterOn : styles.masterOff]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.masterTitle, { color: open ? colors.green : colors.muted }]}>
-              {open ? '● Accepting appointments' : '○ Scheduling closed'}
+              {open ? T.master.openTitle : T.master.closedTitle}
             </Text>
             <Text style={styles.masterSub}>
-              {open ? 'Members can request open time slots. Tap to close.' : 'Members cannot request appointments. Tap to open.'}
+              {open ? T.master.openSub : T.master.closedSub}
             </Text>
           </View>
         </TouchableOpacity>
         )}
 
         {/* Pending requests */}
-        <Card title={`Requests (${pending.length})`} flat>
+        <Card title={fmt(T.requests.title, { n: pending.length })} flat>
           {apptErr ? <Text style={styles.errText}>{apptErr}</Text> : null}
           {pending.length === 0 ? (
-            <Text style={styles.empty}>No pending requests.</Text>
+            <Text style={styles.empty}>{T.requests.empty}</Text>
           ) : pending.map(a => (
             <View key={a.id} style={styles.reqRow}>
               <View style={styles.reqTop}>
                 <Text style={styles.reqName}>{memberName(a.congregant_id)}</Text>
-                <Text style={styles.reqType}>{a.type_label} · {a.duration_minutes}m</Text>
+                <Text style={styles.reqType}>{fmt(S.appointments.slotMeta, { type: a.type_label, n: a.duration_minutes })}</Text>
               </View>
-              <Text style={styles.reqWhen}>{formatDayLabel(new Date(a.starts_at))} · {formatTime(new Date(a.starts_at))}</Text>
-              {a.note ? <Text style={styles.reqNote}>“{a.note}”</Text> : null}
+              <Text style={styles.reqWhen}>{fmt(S.appointments.dateTime, { date: formatDayLabel(new Date(a.starts_at)), time: formatTime(new Date(a.starts_at)) })}</Text>
+              {a.note ? <Text style={styles.reqNote}>{fmt(T.requests.note, { note: a.note })}</Text> : null}
               <View style={styles.reqBtns}>
                 <TouchableOpacity style={[styles.smallBtn, styles.confirmBtn]} onPress={() => respond(a, true)}>
-                  <Text style={styles.confirmText}>✓ Confirm</Text>
+                  <Text style={styles.confirmText}>{T.requests.confirm}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.smallBtn, styles.declineBtn]} onPress={() => respond(a, false)}>
-                  <Text style={styles.declineText}>✕ Decline</Text>
+                  <Text style={styles.declineText}>{T.requests.decline}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -605,14 +608,14 @@ export default function ScheduleScreen() {
 
         {/* Upcoming confirmed */}
         {upcoming.length > 0 && (
-          <Card title={`Upcoming (${upcoming.length})`} flat>
+          <Card title={fmt(T.upcoming.title, { n: upcoming.length })} flat>
             {upcoming.map(a => (
               <View key={a.id} style={styles.upRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.reqName}>{memberName(a.congregant_id)}</Text>
-                  <Text style={styles.reqWhen}>{a.type_label} · {formatDayLabel(new Date(a.starts_at))} · {formatTime(new Date(a.starts_at))}</Text>
+                  <Text style={styles.reqWhen}>{fmt(T.upcoming.line, { type: a.type_label, date: formatDayLabel(new Date(a.starts_at)), time: formatTime(new Date(a.starts_at)) })}</Text>
                 </View>
-                <TouchableOpacity hitSlop={8} onPress={() => cancelAppt(a)}><Text style={styles.cancelLink}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity hitSlop={8} onPress={() => cancelAppt(a)}><Text style={styles.cancelLink}>{T.upcoming.cancel}</Text></TouchableOpacity>
               </View>
             ))}
           </Card>
@@ -622,57 +625,57 @@ export default function ScheduleScreen() {
             so it all steps aside rather than sitting as dead controls. */}
         {mode === 'app' && (<>
         {/* Appointment types */}
-        <Card title="Appointment Types" titleIcon="✦">
+        <Card title={T.types.title} titleIcon="✦">
           {types.length === 0 ? (
-            <Text style={styles.empty}>Add the kinds of appointments you offer and how long each takes.</Text>
+            <Text style={styles.empty}>{T.types.empty}</Text>
           ) : types.map(t => (
             <View key={t.id} style={styles.listRow}>
               <TouchableOpacity onPress={() => toggleType(t)} style={styles.activePill}>
-                <Text style={[styles.activePillText, { color: t.active ? colors.green : colors.faint }]}>{t.active ? 'ON' : 'OFF'}</Text>
+                <Text style={[styles.activePillText, { color: t.active ? colors.green : colors.faint }]}>{t.active ? T.types.on : T.types.off}</Text>
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowTitle, !t.active && { color: colors.muted }]}>{t.label}</Text>
-                <Text style={styles.rowSub}>{t.duration_minutes} minutes</Text>
+                <Text style={styles.rowSub}>{plural(T.types.duration, t.duration_minutes)}</Text>
               </View>
               <TouchableOpacity hitSlop={8} onPress={() => removeType(t)}><Text style={styles.removeX}>✕</Text></TouchableOpacity>
             </View>
           ))}
           <View style={styles.divider} />
-          <Text style={styles.formLabel}>NEW TYPE</Text>
-          <TextInput style={styles.input} placeholder="e.g. Spiritual Counseling" placeholderTextColor={colors.faint} value={newTypeLabel} onChangeText={setNewTypeLabel} />
-          <Text style={[styles.formLabel, { marginTop: 12 }]}>LENGTH</Text>
+          <Text style={styles.formLabel}>{T.types.newLabel}</Text>
+          <TextInput style={styles.input} placeholder={T.types.newPlaceholder} placeholderTextColor={colors.faint} value={newTypeLabel} onChangeText={setNewTypeLabel} />
+          <Text style={[styles.formLabel, { marginTop: 12 }]}>{T.types.lengthLabel}</Text>
           <View style={styles.pillRow}>
             {DURATION_OPTS.map(d => (
               <TouchableOpacity key={d} style={[styles.pill, newTypeDur === d && styles.pillActive]} onPress={() => setNewTypeDur(d)}>
-                <Text style={[styles.pillText, newTypeDur === d && styles.pillTextActive]}>{d}m</Text>
+                <Text style={[styles.pillText, newTypeDur === d && styles.pillTextActive]}>{fmt(T.types.durationShort, { n: d })}</Text>
               </TouchableOpacity>
             ))}
           </View>
           <TouchableOpacity style={[styles.addBtn, !newTypeLabel.trim() && styles.btnDisabled]} onPress={addType} disabled={!newTypeLabel.trim()}>
-            <Text style={styles.addBtnText}>ADD TYPE</Text>
+            <Text style={styles.addBtnText}>{T.types.add}</Text>
           </TouchableOpacity>
         </Card>
 
         {/* Weekly availability */}
-        <Card title="Weekly Availability" titleIcon="◷">
+        <Card title={T.weekly.title} titleIcon="◷">
           {rules.length === 0 ? (
-            <Text style={styles.empty}>Add recurring weekly windows. They repeat every week until you remove them.</Text>
+            <Text style={styles.empty}>{T.weekly.empty}</Text>
           ) : rules.map(r => (
             <View key={r.id} style={styles.listRow}>
               <TouchableOpacity onPress={() => toggleRule(r)} style={styles.activePill}>
-                <Text style={[styles.activePillText, { color: r.active ? colors.green : colors.faint }]}>{r.active ? 'ON' : 'OFF'}</Text>
+                <Text style={[styles.activePillText, { color: r.active ? colors.green : colors.faint }]}>{r.active ? T.types.on : T.types.off}</Text>
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowTitle, !r.active && { color: colors.muted }]}>{WEEKDAYS[r.weekday]}</Text>
-                <Text style={styles.rowSub}>{formatMinuteRange(r.start_minute, r.end_minute)} · {typeLabel(r.type_id)}</Text>
+                <Text style={styles.rowSub}>{fmt(T.weekly.windowLine, { range: formatMinuteRange(r.start_minute, r.end_minute), type: typeLabel(r.type_id) })}</Text>
               </View>
               <TouchableOpacity hitSlop={8} onPress={() => removeRule(r)}><Text style={styles.removeX}>✕</Text></TouchableOpacity>
             </View>
           ))}
           <View style={styles.divider} />
-          <Text style={styles.formLabel}>NEW WINDOW</Text>
+          <Text style={styles.formLabel}>{T.weekly.newLabel}</Text>
           {types.filter(t => t.active).length === 0 ? (
-            <Text style={styles.hint}>Add an active appointment type above first.</Text>
+            <Text style={styles.hint}>{T.weekly.needType}</Text>
           ) : (
             <>
               <View style={styles.pillRow}>
@@ -690,23 +693,21 @@ export default function ScheduleScreen() {
                 ))}
               </View>
               <View style={styles.pickerGroup}>
-                <TimePicker label="Start" options={START_OPTIONS} value={ruleStart} onChange={v => moveFrom(v, ruleEnd, setRuleStart, setRuleEnd)} />
-                <TimePicker label="End" options={END_OPTIONS} value={ruleEnd} onChange={v => moveTo(v, ruleStart, setRuleEnd)} />
+                <TimePicker label={T.weekly.start} options={START_OPTIONS} value={ruleStart} onChange={v => moveFrom(v, ruleEnd, setRuleStart, setRuleEnd)} />
+                <TimePicker label={T.weekly.end} options={END_OPTIONS} value={ruleEnd} onChange={v => moveTo(v, ruleStart, setRuleEnd)} />
               </View>
               {ruleErr ? <Text style={styles.errText}>{ruleErr}</Text> : null}
               <TouchableOpacity style={styles.addBtn} onPress={addRule}>
-                <Text style={styles.addBtnText}>ADD WINDOW</Text>
+                <Text style={styles.addBtnText}>{T.weekly.add}</Text>
               </TouchableOpacity>
             </>
           )}
         </Card>
 
         {/* Date exceptions — one-off closures over the recurring schedule */}
-        <Card title="Days Away & Extra Hours" titleIcon="⊘">
+        <Card title={T.days.title} titleIcon="⊘">
           <Text style={styles.empty}>
-            Change a single date without touching your weekly pattern. Close a day, or
-            part of one, when you're travelling or otherwise unavailable — or open extra
-            hours on a date your weekly pattern doesn't cover.
+            {T.days.intro}
           </Text>
 
           <View style={styles.monthNav}>
@@ -716,7 +717,7 @@ export default function ScheduleScreen() {
               onPress={() => { H.tap(); setSelectedDay(null); setCalMonth(m => addMonths(m, -1)); }}
               hitSlop={8}
             >
-              <Text style={styles.navBtnText}>‹</Text>
+              <Text style={styles.navBtnText}>{GLYPH.back}</Text>
             </TouchableOpacity>
             <Text style={styles.monthTitle}>{monthLabel(calMonth)}</Text>
             <TouchableOpacity
@@ -725,13 +726,13 @@ export default function ScheduleScreen() {
               onPress={() => { H.tap(); setSelectedDay(null); setCalMonth(m => addMonths(m, 1)); }}
               hitSlop={8}
             >
-              <Text style={styles.navBtnText}>›</Text>
+              <Text style={styles.navBtnText}>{GLYPH.forward}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.calHeadRow}>
-            {WEEKDAYS_SHORT.map(w => (
-              <Text key={w} style={styles.calHead}>{w[0]}</Text>
+            {WEEKDAYS_SHORT.map((w, i) => (
+              <Text key={w} style={styles.calHead}>{WEEKDAY_INITIALS[i]}</Text>
             ))}
           </View>
           <View style={styles.calGrid}>
@@ -768,20 +769,20 @@ export default function ScheduleScreen() {
             })}
           </View>
           <View style={styles.legendRow}>
-            <View style={[styles.legendSwatch, styles.calCellAvail]} /><Text style={styles.legendText}>open</Text>
-            <View style={[styles.legendSwatch, styles.calCellExtra]} /><Text style={styles.legendText}>extra hours</Text>
-            <View style={[styles.legendSwatch, styles.calCellPartial]} /><Text style={styles.legendText}>partly closed</Text>
-            <View style={[styles.legendSwatch, styles.calCellClosed]} /><Text style={styles.legendText}>closed</Text>
+            <View style={[styles.legendSwatch, styles.calCellAvail]} /><Text style={styles.legendText}>{T.days.legend.open}</Text>
+            <View style={[styles.legendSwatch, styles.calCellExtra]} /><Text style={styles.legendText}>{T.days.legend.extra}</Text>
+            <View style={[styles.legendSwatch, styles.calCellPartial]} /><Text style={styles.legendText}>{T.days.legend.partial}</Text>
+            <View style={[styles.legendSwatch, styles.calCellClosed]} /><Text style={styles.legendText}>{T.days.legend.closed}</Text>
           </View>
 
           {selectedDay && (
             <View style={styles.dayPanel}>
               <Text style={styles.dayPanelTitle}>
-                {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                {fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}
               </Text>
               {!weekdayHasAvailability(selectedDay) && selectedDayExtras.length === 0 && (
                 <Text style={styles.hint}>
-                  Nothing recurring on this weekday — there's nothing to close, but you can open extra hours below.
+                  {T.days.noRecurring}
                 </Text>
               )}
 
@@ -791,7 +792,7 @@ export default function ScheduleScreen() {
                     <View key={ex.id} style={styles.listRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.rowTitle}>
-                          {ex.start_minute == null ? 'Closed all day' : `Closed ${formatMinuteRange(ex.start_minute!, ex.end_minute!)}`}
+                          {ex.start_minute == null ? T.days.closedAllDay : fmt(T.days.closedRange, { range: formatMinuteRange(ex.start_minute!, ex.end_minute!) })}
                         </Text>
                         {ex.note ? <Text style={styles.rowSub}>{ex.note}</Text> : null}
                       </View>
@@ -801,7 +802,7 @@ export default function ScheduleScreen() {
                     </View>
                   ))}
                   <TouchableOpacity style={styles.reopenBtn} onPress={() => reopenDay(selectedDay)}>
-                    <Text style={styles.reopenBtnText}>REOPEN THIS DAY</Text>
+                    <Text style={styles.reopenBtnText}>{T.days.reopen}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -809,16 +810,16 @@ export default function ScheduleScreen() {
               {!isClosedAllDay(exceptions, selectedDay) && (
                 <>
                   <TouchableOpacity style={styles.closeDayBtn} onPress={() => closeWholeDay(selectedDay)}>
-                    <Text style={styles.closeDayBtnText}>CLOSE THE WHOLE DAY</Text>
+                    <Text style={styles.closeDayBtnText}>{T.days.closeWholeDay}</Text>
                   </TouchableOpacity>
-                  <Text style={[styles.formLabel, { marginTop: 14 }]}>OR CLOSE PART OF IT</Text>
+                  <Text style={[styles.formLabel, { marginTop: 14 }]}>{T.days.orClosePart}</Text>
                   <View style={styles.pickerGroup}>
-                    <TimePicker label="From" options={START_OPTIONS} value={exStart} onChange={v => moveFrom(v, exEnd, setExStart, setExEnd)} />
-                    <TimePicker label="To" options={END_OPTIONS} value={exEnd} onChange={v => moveTo(v, exStart, setExEnd)} />
+                    <TimePicker label={T.days.from} options={START_OPTIONS} value={exStart} onChange={v => moveFrom(v, exEnd, setExStart, setExEnd)} />
+                    <TimePicker label={T.days.to} options={END_OPTIONS} value={exEnd} onChange={v => moveTo(v, exStart, setExEnd)} />
                   </View>
                   {exErr ? <Text style={styles.errText}>{exErr}</Text> : null}
                   <TouchableOpacity style={styles.addBtn} onPress={() => closePartOfDay(selectedDay)}>
-                    <Text style={styles.addBtnText}>CLOSE THIS TIME</Text>
+                    <Text style={styles.addBtnText}>{T.days.closeThisTime}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -830,7 +831,7 @@ export default function ScheduleScreen() {
                 <View key={ex.id} style={styles.listRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitleExtra}>
-                      + Extra {formatMinuteRange(ex.start_minute!, ex.end_minute!)}
+                      {fmt(T.days.extraRange, { range: formatMinuteRange(ex.start_minute!, ex.end_minute!) })}
                     </Text>
                     <Text style={styles.rowSub}>{typeLabel(ex.type_id)}</Text>
                   </View>
@@ -841,12 +842,12 @@ export default function ScheduleScreen() {
               ))}
 
               {isClosedAllDay(exceptions, selectedDay) ? (
-                <Text style={styles.hint}>This day is closed — reopen it to add extra hours.</Text>
+                <Text style={styles.hint}>{T.days.closedHint}</Text>
               ) : activeTypes.length === 0 ? (
-                <Text style={styles.hint}>Add an active appointment type above to open extra hours.</Text>
+                <Text style={styles.hint}>{T.days.needTypeForExtra}</Text>
               ) : (
                 <>
-                  <Text style={styles.formLabel}>OPEN EXTRA HOURS</Text>
+                  <Text style={styles.formLabel}>{T.days.openExtraLabel}</Text>
                   <View style={styles.pillRow}>
                     {activeTypes.map(t => {
                       const on = (addTypeId ?? activeTypes[0].id) === t.id;
@@ -858,12 +859,12 @@ export default function ScheduleScreen() {
                     })}
                   </View>
                   <View style={styles.pickerGroup}>
-                    <TimePicker label="From" options={START_OPTIONS} value={addStart} onChange={v => moveFrom(v, addEnd, setAddStart, setAddEnd)} />
-                    <TimePicker label="To" options={END_OPTIONS} value={addEnd} onChange={v => moveTo(v, addStart, setAddEnd)} />
+                    <TimePicker label={T.days.from} options={START_OPTIONS} value={addStart} onChange={v => moveFrom(v, addEnd, setAddStart, setAddEnd)} />
+                    <TimePicker label={T.days.to} options={END_OPTIONS} value={addEnd} onChange={v => moveTo(v, addStart, setAddEnd)} />
                   </View>
                   {addErr ? <Text style={styles.errText}>{addErr}</Text> : null}
                   <TouchableOpacity style={styles.openHoursBtn} onPress={() => openExtraHours(selectedDay)}>
-                    <Text style={styles.openHoursBtnText}>OPEN THIS TIME</Text>
+                    <Text style={styles.openHoursBtnText}>{T.days.openThisTime}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -876,19 +877,18 @@ export default function ScheduleScreen() {
         {/* Calendly mode: the link IS the booking system, so it is the one
             thing to configure. */}
         {mode === 'calendly' && (
-        <Card title="My Calendly Link" titleIcon="↗">
+        <Card title={T.calendly.title} titleIcon={isRTL ? '↖' : '↗'}>
           <Text style={styles.empty}>
-            This is how your flock books you: they see a “Book on Calendly”
-            button on their Appointments tab that opens this link.
+            {T.calendly.intro}
           </Text>
           {!calendly && (
             <Text style={styles.errText}>
-              No link yet — until you save one, members have no way to book you.
+              {T.calendly.noLink}
             </Text>
           )}
           <TextInput
             style={[styles.input, { marginTop: 6 }]}
-            placeholder="calendly.com/your-name"
+            placeholder={T.calendly.placeholder}
             placeholderTextColor={colors.faint}
             value={calendlyDraft}
             onChangeText={setCalendlyDraft}
@@ -903,15 +903,15 @@ export default function ScheduleScreen() {
             onPress={saveCalendly}
             disabled={!calendlyDraft.trim() || calendlyDraft.trim() === calendly}
           >
-            <Text style={styles.addBtnText}>{calendly ? 'UPDATE LINK' : 'SAVE LINK'}</Text>
+            <Text style={styles.addBtnText}>{calendly ? T.calendly.update : T.calendly.save}</Text>
           </TouchableOpacity>
           {calendly && (
             <View style={styles.calendlyLinks}>
               <TouchableOpacity hitSlop={8} onPress={() => { H.tap(); Linking.openURL(calendly); }}>
-                <Text style={styles.calendlyOpen}>Open my Calendly ↗</Text>
+                <Text style={styles.calendlyOpen}>{T.calendly.open}</Text>
               </TouchableOpacity>
               <TouchableOpacity hitSlop={8} onPress={removeCalendly}>
-                <Text style={styles.calendlyRemove}>Remove</Text>
+                <Text style={styles.calendlyRemove}>{S.common.remove}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -924,37 +924,33 @@ export default function ScheduleScreen() {
             different audience included, since Calendly hides slots that
             collide with its connected calendar) sees the time as taken. */}
         {mode === 'app' && (
-        <Card title="Add Bookings to Your Calendar" titleIcon="⇄">
+        <Card title={T.sync.title} titleIcon="⇄">
           <Text style={styles.empty}>
-            When you confirm an appointment here, Nepsis adds it to a calendar
-            you choose on this phone — so it shows up where the rest of your
-            week lives, with reminders. Anything that reads that calendar (a
-            Calendly you keep for other work, a shared parish calendar) sees
-            the time as taken. Cancelling here removes the event.
+            {T.sync.intro}
           </Text>
           {!calendarSyncSupported ? (
-            <Text style={styles.hint}>Available in the mobile app — calendars on this device can't be reached from the browser.</Text>
+            <Text style={styles.hint}>{T.sync.webOnly}</Text>
           ) : demoMode ? (
-            <Text style={styles.hint}>Demo mode — sign in to connect your real calendar.</Text>
+            <Text style={styles.hint}>{T.sync.demo}</Text>
           ) : (
             <>
               {syncCal ? (
                 <View style={styles.calendlyLinks}>
-                  <Text style={styles.syncOnText}>⇄ Writing to “{syncCal.title}”</Text>
+                  <Text style={styles.syncOnText}>{fmt(T.sync.writingTo, { title: syncCal.title })}</Text>
                   <TouchableOpacity hitSlop={8} onPress={disableCalendarSync}>
-                    <Text style={styles.calendlyRemove}>Turn off</Text>
+                    <Text style={styles.calendlyRemove}>{T.sync.turnOff}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
-              {syncWarn ? <Text style={styles.errText}>⚠ {syncWarn}</Text> : null}
+              {syncWarn ? <Text style={styles.errText}>{fmt(T.sync.warning, { message: syncWarn })}</Text> : null}
               {calChoices === 'denied' ? (
                 <Text style={styles.errText}>
-                  Calendar access was declined — allow it in Settings → Nepsis to use this.
+                  {T.sync.denied}
                 </Text>
               ) : calChoices === 'error' ? (
-                <Text style={styles.errText}>Couldn't read this device's calendars — try again.</Text>
+                <Text style={styles.errText}>{T.sync.readError}</Text>
               ) : calChoices && calChoices.length === 0 ? (
-                <Text style={styles.errText}>No writable calendars found on this device.</Text>
+                <Text style={styles.errText}>{T.sync.noCalendars}</Text>
               ) : calChoices ? (
                 calChoices.map(c => (
                   <TouchableOpacity key={c.id} style={styles.calChoiceRow} onPress={() => pickCalendar(c)}>
@@ -969,7 +965,7 @@ export default function ScheduleScreen() {
               {syncMsg ? <Text style={styles.savedMsg}>{syncMsg}</Text> : null}
               <TouchableOpacity style={styles.addBtn} onPress={calChoices ? () => { H.tap(); setCalChoices(null); } : openCalendarPicker}>
                 <Text style={styles.addBtnText}>
-                  {calChoices ? 'CLOSE' : syncCal ? 'CHANGE CALENDAR' : 'CHOOSE A CALENDAR'}
+                  {calChoices ? T.sync.close : syncCal ? T.sync.change : T.sync.choose}
                 </Text>
               </TouchableOpacity>
             </>
@@ -1038,7 +1034,7 @@ const styles = lazyThemed(() => StyleSheet.create({
 
   // generic list rows
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
-  activePill: { width: 40, height: 26, borderRadius: 13, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.panel },
+  activePill: { minWidth: 40, paddingHorizontal: 6, height: 26, borderRadius: 13, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.panel },
   activePillText: { fontFamily: fonts.latoBold, fontSize: 10, letterSpacing: 0.5 },
   rowTitle: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.cream },
   rowSub: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 1 },

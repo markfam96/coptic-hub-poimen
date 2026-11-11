@@ -13,6 +13,25 @@ import { useDemoMode } from '@/lib/demo';
 import { decryptFromSender } from '@/lib/crypto';
 import { confirmDestructive } from '@/lib/confirm';
 import { pickPhoto, uploadAvatarImage, removeAvatarImage, newFlockPhotoPath, pathFromAvatarUrl, cameraAvailable, PhotoSource } from '@/lib/avatar';
+import { S, fmt, plural, fmtDate, GLYPH, isRTL } from '@/lib/i18n';
+import { describeAssigned } from '@/lib/canon/describe';
+
+const T = S.servant.student;
+const D = S.demo.servant;
+
+// `frequency` and a request's category are stored values: these give the
+// words shown for them, and anything else (a frequency typed by hand) is
+// shown as stored.
+const frequencyLabel = (v: string) => (S.canonEditor.servant.freq as Record<string, string>)[v] ?? v;
+const categoryLabel = (v: string) => (T.prayer.categories as Record<string, string>)[v] ?? v;
+const demoDate = (y: number, m: number, d: number) => fmtDate(new Date(y, m, d), { month: 'short', day: 'numeric', year: 'numeric' });
+// `start_date` is stored as YYYY-MM-DD. It is read as a calendar day in the
+// device's own time zone (new Date('2026-06-08') would be the evening before
+// in the Americas); anything in another form is shown as stored.
+const startDateLabel = (v: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v ?? '');
+  return m ? demoDate(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : v;
+};
 
 // ── Demo data ─────────────────────────────────────────────────
 const DEMO_DB: Record<string, {
@@ -21,25 +40,19 @@ const DEMO_DB: Record<string, {
 }> = {
   'demo-s1': {
     canons: [
-      { id: 'ds1', component: 'Morning Agpeya', frequency: 'Daily', startDate: 'Jun 1, 2026', completions: 5, totalDays: 7 },
-      { id: 'ds2', component: 'Gospel Reading (1 chapter)', frequency: 'Daily', startDate: 'Jun 1, 2026', completions: 4, totalDays: 7 },
+      { id: 'ds1', component: D.johnMark.canonMorningAgpeya, frequency: 'Daily', startDate: demoDate(2026, 5, 1), completions: 5, totalDays: 7 },
+      { id: 'ds2', component: D.johnMark.canonGospel, frequency: 'Daily', startDate: demoDate(2026, 5, 1), completions: 4, totalDays: 7 },
     ],
-    note: "Good attendance at Sunday School. Misses service occasionally due to soccer practice. Spoke about feeling disconnected from faith — suggested starting with the morning Agpeya as a simple anchor. Follow up next Sunday on how it's going.",
-    prayer: [
-      'Passing his math exams this week',
-      'His grandmother who has been ill',
-    ],
+    note: D.johnMark.note,
+    prayer: [...D.johnMark.prayer],
     psalm: { streak: 4, longestStreak: 10, masteredItems: 2 },
   },
   'demo-s2': {
     canons: [
-      { id: 'ds3', component: 'Evening Compline', frequency: 'Daily', startDate: 'May 20, 2026', completions: 6, totalDays: 7 },
+      { id: 'ds3', component: D.esther.canonCompline, frequency: 'Daily', startDate: demoDate(2026, 4, 20), completions: 6, totalDays: 7 },
     ],
-    note: 'Thoughtful and engaged — asks deep questions about fasting and prayer. Parents are very supportive of her spiritual growth. Mentioned feeling nervous about transitioning to the youth group next year. Worth checking in with her parents.',
-    prayer: [
-      'Peace for her parents who are going through a difficult season',
-      'That she would understand the faith more deeply',
-    ],
+    note: D.esther.note,
+    prayer: [...D.esther.prayer],
     psalm: null,
   },
 };
@@ -76,7 +89,7 @@ export default function StudentScreen() {
   );
   const [psalmStats, setPsalmStats] = useState<{ streak: number; longestStreak: number; masteredItems: number } | null>(demoMode ? demo.psalm : null);
 
-  const displayName = studentName ?? 'Student';
+  const displayName = studentName ?? T.nameFallback;
   const initials = displayName.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
 
   // Photos: the student's own picture wins; otherwise this servant's roster
@@ -96,9 +109,9 @@ export default function StudentScreen() {
       // Fresh random path per upload (see newFlockPhotoPath); drop the old object.
       const oldPath = myPhotoUrl ? pathFromAvatarUrl(myPhotoUrl) : null;
       const { url, error } = await uploadAvatarImage(newFlockPhotoPath(user.id, studentId), base64);
-      if (!url) { setPhotoError(`Couldn't upload: ${error}`); return; }
+      if (!url) { setPhotoError(fmt(T.photo.uploadFailed, { error: String(error) })); return; }
       const { error: dbErr } = await db.upsertMemberPhoto(user.id, studentId, url);
-      if (dbErr) { setPhotoError(`Couldn't save: ${dbErr}`); return; }
+      if (dbErr) { setPhotoError(fmt(T.photo.saveFailed, { error: String(dbErr) })); return; }
       if (oldPath) removeAvatarImage(oldPath);
       setMyPhotoUrl(url);
     } finally {
@@ -108,11 +121,11 @@ export default function StudentScreen() {
 
   function removeStudentPhoto() {
     if (!user || !studentId || !myPhotoUrl) return;
-    confirmDestructive('Remove photo', 'Remove the photo you added for this student?', 'Remove', async () => {
+    confirmDestructive(T.photo.removeTitle, T.photo.removeBody, S.common.remove, async () => {
       setPhotoBusy(true);
       const path = pathFromAvatarUrl(myPhotoUrl);
       const { error } = await db.deleteMemberPhoto(user.id, studentId);
-      if (error) { setPhotoError(`Couldn't remove: ${error}`); setPhotoBusy(false); return; }
+      if (error) { setPhotoError(fmt(T.photo.removeFailed, { error: String(error) })); setPhotoBusy(false); return; }
       if (path) removeAvatarImage(path);
       setMyPhotoUrl(null);
       setPhotoBusy(false);
@@ -159,7 +172,9 @@ export default function StudentScreen() {
       const enriched = await Promise.all(canonData.map(async c => {
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
         const count = await db.countCanonCompletionsSince(c.id, sevenDaysAgo);
-        return { id: c.id, component: c.component, frequency: c.frequency, startDate: c.start_date, completions: count, totalDays: 7 };
+        // English shows the stored date as it always has; Arabic shows it
+        // with Arabic month names.
+        return { id: c.id, component: describeAssigned(c.component, c.category, c.payload), frequency: c.frequency, startDate: isRTL ? startDateLabel(c.start_date) : c.start_date, completions: count, totalDays: 7 };
       }));
       setCanons(enriched);
     }
@@ -167,8 +182,8 @@ export default function StudentScreen() {
     if (prayerData) {
       const senderPubKey = await db.getPublicKey(studentId);
       const decryptedPrayer = await Promise.all(prayerData.map(async (r: any) => ({
-        topic: r.category,
-        date: new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        topic: categoryLabel(r.category),
+        date: fmtDate(new Date(r.created_at), { month: 'short', day: 'numeric', year: 'numeric' }),
         body: (r.body_servant && senderPubKey) ? await decryptFromSender(r.body_servant, senderPubKey) : null,
       })));
       setPrayer(decryptedPrayer);
@@ -195,7 +210,7 @@ export default function StudentScreen() {
     setAddNoteError('');
     const { data, error } = await db.insertPastoralNote(user!.id, studentId!, newNoteText.trim());
     setAddingNote(false);
-    if (error || !data) { setAddNoteError('Failed to save — please try again.'); return; }
+    if (error || !data) { setAddNoteError(T.notes.saveFailed); return; }
     setNotes(prev => [data, ...prev]);
     setNewNoteText('');
   }
@@ -217,7 +232,7 @@ export default function StudentScreen() {
     setEditError('');
     const { error } = await db.updatePastoralNote(editingId, editText.trim());
     setSavingEdit(false);
-    if (error) { setEditError('Failed to save — please try again.'); return; }
+    if (error) { setEditError(T.notes.saveFailed); return; }
     setNotes(prev => prev.map(n => n.id === editingId ? { ...n, body: editText.trim(), updated_at: new Date().toISOString() } : n));
     setEditingId(null);
   }
@@ -231,10 +246,10 @@ export default function StudentScreen() {
   }
 
   const TABS: { value: TabType; label: string }[] = [
-    { value: 'canons', label: 'Canons' },
-    { value: 'psalms', label: 'Psalms' },
-    { value: 'notes', label: 'My Notes' },
-    { value: 'prayer', label: 'Prayer' },
+    { value: 'canons', label: T.tabs.canons },
+    { value: 'psalms', label: T.tabs.psalms },
+    { value: 'notes', label: T.tabs.notes },
+    { value: 'prayer', label: T.tabs.prayer },
   ];
 
   return (
@@ -242,15 +257,15 @@ export default function StudentScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
         <TouchableOpacity style={styles.backRow} onPress={() => router.push('/(servant)')}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>My Students</Text>
+          <Text style={styles.backArrow}>{GLYPH.back}</Text>
+          <Text style={styles.backText}>{T.back}</Text>
         </TouchableOpacity>
 
         <View style={styles.heroCard}>
           <Avatar url={studentAvatarUrl ?? myPhotoUrl} initials={initials} size={52} style={styles.heroAvatar} textStyle={styles.heroAvatarText} />
           <View style={{ flex: 1 }}>
             <Text style={styles.heroName}>{displayName}</Text>
-            <Text style={styles.heroMeta}>Sunday School Student</Text>
+            <Text style={styles.heroMeta}>{T.role}</Text>
           </View>
         </View>
 
@@ -258,20 +273,20 @@ export default function StudentScreen() {
         {!demoMode && !loading && !studentAvatarUrl && (
           <View style={styles.photoRow}>
             <Text style={styles.photoRowLabel}>
-              {myPhotoUrl ? 'Your photo of this student (visible only to you)' : 'No profile photo — add one (visible only to you)'}
+              {myPhotoUrl ? T.photo.yours : T.photo.none}
             </Text>
             <View style={styles.photoChipRow}>
               {cameraAvailable && (
                 <TouchableOpacity style={styles.photoChip} onPress={() => addStudentPhoto('camera')} disabled={photoBusy}>
-                  <Text style={styles.photoChipText}>◉ Camera</Text>
+                  <Text style={styles.photoChipText}>{T.photo.camera}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.photoChip} onPress={() => addStudentPhoto('library')} disabled={photoBusy}>
-                <Text style={styles.photoChipText}>{myPhotoUrl ? '▤ Change' : '▤ Upload'}</Text>
+                <Text style={styles.photoChipText}>{myPhotoUrl ? T.photo.change : T.photo.upload}</Text>
               </TouchableOpacity>
               {!!myPhotoUrl && (
                 <TouchableOpacity style={styles.photoChip} onPress={removeStudentPhoto} disabled={photoBusy}>
-                  <Text style={[styles.photoChipText, { color: colors.red }]}>✕ Remove</Text>
+                  <Text style={[styles.photoChipText, { color: colors.red }]}>{T.photo.remove}</Text>
                 </TouchableOpacity>
               )}
               {photoBusy && <ActivityIndicator color={colors.gold} size="small" />}
@@ -298,14 +313,14 @@ export default function StudentScreen() {
               <>
                 <View style={styles.actionRow}>
                   <TouchableOpacity style={styles.btnGold} onPress={() => router.push({ pathname: '/(servant)/assign-canon', params: { studentId: studentId ?? '', studentName: displayName } })}>
-                    <Text style={styles.btnGoldText}>+ ASSIGN CANON</Text>
+                    <Text style={styles.btnGoldText}>{T.canons.assign}</Text>
                   </TouchableOpacity>
                 </View>
-                <Card title={`Assigned Canons (${canons.length})`} titleIconNode={<CandleIcon size={16} color={colors.gold} />}>
+                <Card title={fmt(T.canons.cardTitle, { n: canons.length })} titleIconNode={<CandleIcon size={16} color={colors.gold} />}>
                   {canons.length === 0 ? (
                     <View style={styles.emptyState}>
-                      <Text style={styles.emptyTitle}>No canons assigned yet</Text>
-                      <Text style={styles.emptyBody}>Assign a Bible reading or prayer practice to get started.</Text>
+                      <Text style={styles.emptyTitle}>{T.canons.emptyTitle}</Text>
+                      <Text style={styles.emptyBody}>{T.canons.emptyBody}</Text>
                     </View>
                   ) : (
                     canons.map((c, i) => {
@@ -314,18 +329,18 @@ export default function StudentScreen() {
                         <View key={c.id} style={[styles.canonRow, i < canons.length - 1 && styles.canonBorder]}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.canonComponent}>{c.component}</Text>
-                            <Text style={styles.canonMeta}>{c.frequency} · since {c.startDate}</Text>
+                            <Text style={styles.canonMeta}>{fmt(T.canons.meta, { frequency: frequencyLabel(c.frequency), date: c.startDate })}</Text>
                             <View style={styles.progressRow}>
                               <View style={styles.progressTrack}>
                                 <View style={[styles.progressFill, { width: `${Math.min(pct, 100)}%` as any }]} />
                               </View>
                               <Text style={[styles.progressPct, { color: pct < 50 ? colors.yellow : colors.green }]}>
-                                {c.completions}/{c.totalDays} this week
+                                {fmt(T.canons.thisWeek, { done: c.completions, total: c.totalDays })}
                               </Text>
                             </View>
                           </View>
                           <TouchableOpacity style={styles.removeBtn} onPress={() => handleDeactivateCanon(c.id)}>
-                            <Text style={styles.removeBtnText}>Remove</Text>
+                            <Text style={styles.removeBtnText}>{S.common.remove}</Text>
                           </TouchableOpacity>
                         </View>
                       );
@@ -337,25 +352,25 @@ export default function StudentScreen() {
 
             {/* ── Psalms ── */}
             {tab === 'psalms' && (
-              <Card title="Psalm Memorization" titleIconNode={<Harp size={16} color={colors.gold} />}>
+              <Card title={T.psalms.cardTitle} titleIconNode={<Harp size={16} color={colors.gold} />}>
                 {!psalmStats ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No shared progress</Text>
-                    <Text style={styles.emptyBody}>{displayName.split(' ')[0]} hasn't shared psalm memorization progress yet.</Text>
+                    <Text style={styles.emptyTitle}>{T.psalms.emptyTitle}</Text>
+                    <Text style={styles.emptyBody}>{fmt(T.psalms.emptyBody, { name: displayName.split(' ')[0] })}</Text>
                   </View>
                 ) : (
                   <View style={styles.psalmStatsRow}>
                     <View style={styles.psalmStat}>
                       <Text style={styles.psalmStatValue}>🔥 {psalmStats.streak}</Text>
-                      <Text style={styles.psalmStatLabel}>day streak</Text>
+                      <Text style={styles.psalmStatLabel}>{plural(T.psalms.dayStreak, psalmStats.streak)}</Text>
                     </View>
                     <View style={styles.psalmStat}>
                       <Text style={styles.psalmStatValue}>{psalmStats.longestStreak}</Text>
-                      <Text style={styles.psalmStatLabel}>best streak</Text>
+                      <Text style={styles.psalmStatLabel}>{T.psalms.bestStreak}</Text>
                     </View>
                     <View style={styles.psalmStat}>
                       <Text style={styles.psalmStatValue}>{psalmStats.masteredItems}</Text>
-                      <Text style={styles.psalmStatLabel}>memorized</Text>
+                      <Text style={styles.psalmStatLabel}>{T.psalms.memorized}</Text>
                     </View>
                   </View>
                 )}
@@ -364,27 +379,28 @@ export default function StudentScreen() {
 
             {/* ── My Notes ── */}
             {tab === 'notes' && (
-              <Card title="My Notes" titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
-                <Text style={styles.privacyNote}>✦ Private to you — not visible to the student or their FOC.</Text>
+              <Card title={T.notes.cardTitle} titleIconNode={<PencilIcon size={16} color={colors.gold} />}>
+                <Text style={styles.privacyNote}>{T.notes.privacy}</Text>
 
                 {notes.length === 0 && (
-                  <Text style={styles.emptyTitle}>No notes yet. Add your first note below.</Text>
+                  <Text style={styles.emptyTitle}>{T.notes.empty}</Text>
                 )}
 
                 {notes.map(note => (
                   <View key={note.id} style={styles.noteCard}>
                     <View style={styles.noteCardHeader}>
                       <Text style={styles.noteCardDate}>
-                        {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {note.updated_at !== note.created_at ? '  (edited)' : ''}
+                        {note.updated_at !== note.created_at
+                          ? fmt(T.notes.dateEdited, { date: fmtDate(new Date(note.created_at), { month: 'short', day: 'numeric', year: 'numeric' }) })
+                          : fmtDate(new Date(note.created_at), { month: 'short', day: 'numeric', year: 'numeric' })}
                       </Text>
                       {editingId !== note.id && (
                         <View style={styles.noteActions}>
                           <TouchableOpacity onPress={() => handleStartEdit(note)} style={styles.noteActionBtn}>
-                            <Text style={styles.noteActionText}>Edit</Text>
+                            <Text style={styles.noteActionText}>{S.common.edit}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => handleDeleteNote(note.id)} style={styles.noteActionBtn} disabled={deletingId === note.id}>
-                            <Text style={[styles.noteActionText, { color: colors.red }]}>{deletingId === note.id ? '…' : 'Delete'}</Text>
+                            <Text style={[styles.noteActionText, { color: colors.red }]}>{deletingId === note.id ? '…' : S.common.delete}</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -395,10 +411,10 @@ export default function StudentScreen() {
                         {editError ? <Text style={styles.noteError}>{editError}</Text> : null}
                         <View style={styles.editActions}>
                           <TouchableOpacity style={[styles.btnGold, { opacity: (!editText.trim() || savingEdit) ? 0.4 : 1 }]} onPress={handleSaveEdit} disabled={!editText.trim() || savingEdit}>
-                            <Text style={styles.btnGoldText}>{savingEdit ? 'SAVING…' : 'SAVE'}</Text>
+                            <Text style={styles.btnGoldText}>{savingEdit ? T.notes.saving : T.notes.save}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.btnCancel} onPress={() => setEditingId(null)}>
-                            <Text style={styles.btnCancelText}>CANCEL</Text>
+                            <Text style={styles.btnCancelText}>{T.notes.cancel}</Text>
                           </TouchableOpacity>
                         </View>
                       </>
@@ -411,7 +427,7 @@ export default function StudentScreen() {
                 <View style={styles.addNoteSection}>
                   <TextInput
                     style={styles.noteInput}
-                    placeholder="Add a note from today's meeting or call…"
+                    placeholder={T.notes.placeholder}
                     placeholderTextColor={colors.faint}
                     multiline
                     numberOfLines={4}
@@ -424,7 +440,7 @@ export default function StudentScreen() {
                     onPress={handleAddNote}
                     disabled={!newNoteText.trim() || addingNote}
                   >
-                    <Text style={styles.btnGoldText}>{addingNote ? 'SAVING…' : 'ADD NOTE'}</Text>
+                    <Text style={styles.btnGoldText}>{addingNote ? T.notes.saving : T.notes.add}</Text>
                   </TouchableOpacity>
                 </View>
               </Card>
@@ -432,12 +448,12 @@ export default function StudentScreen() {
 
             {/* ── Prayer Requests ── */}
             {tab === 'prayer' && (
-              <Card title="Prayer Requests" titleIconNode={<PrayingHandsIcon size={16} color={colors.gold} />}>
-                <Text style={styles.privacyNote}>✦ Requests {displayName.split(' ')[0]} has explicitly shared with their Sunday school servant.</Text>
+              <Card title={T.prayer.cardTitle} titleIconNode={<PrayingHandsIcon size={16} color={colors.gold} />}>
+                <Text style={styles.privacyNote}>{fmt(T.prayer.sharedNote, { name: displayName.split(' ')[0] })}</Text>
                 {prayer.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No shared requests</Text>
-                    <Text style={styles.emptyBody}>{displayName.split(' ')[0]} hasn't shared any prayer requests with you yet.</Text>
+                    <Text style={styles.emptyTitle}>{T.prayer.emptyTitle}</Text>
+                    <Text style={styles.emptyBody}>{fmt(T.prayer.emptyBody, { name: displayName.split(' ')[0] })}</Text>
                   </View>
                 ) : (
                   prayer.map((req, i) => (
@@ -458,7 +474,7 @@ export default function StudentScreen() {
 
         <View style={styles.scopeNote}>
           <Text style={styles.scopeNoteText}>
-            ✦ You can see canon progress and psalm memorization your students choose to share. Confession history and pastoral counseling are accessible only to their Father of Confession.
+            {T.scopeNote}
           </Text>
         </View>
 

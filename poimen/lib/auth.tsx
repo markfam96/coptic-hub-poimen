@@ -27,6 +27,26 @@ import {
 import { clearUserStorage } from './storage';
 import { runLegacyNotesMigration } from './crypto-migration';
 import { encodeBase64 } from 'tweetnacl-util';
+import { S, lang, plural } from './i18n';
+import { matchAuthError } from './auth-errors';
+
+// The server words its account errors in English. In another language the
+// common ones are recognised (lib/auth-errors.ts) and shown from the
+// dictionary; anything unrecognised is shown as it came. In English the
+// message is always returned untouched.
+export function localizeAuthError(message: string): string {
+  if (lang === 'en') return message;
+  const match = matchAuthError(message);
+  if (!match) return message;
+  const entry = S.auth.errors[match.key];
+  if (typeof entry === 'string') return entry;
+  return match.n === undefined ? message : plural(entry, match.n);
+}
+
+async function withLocalizedError(result: Promise<{ error: string | null }>): Promise<{ error: string | null }> {
+  const { error } = await result;
+  return { error: error === null ? null : localizeAuthError(error) };
+}
 
 // 'upgrade': the key is on this device but its backup is sealed the old,
 // fast-to-crack way (pinbak1) — ask for a new, longer PIN to reseal it.
@@ -212,19 +232,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signInWithEmail(email: string, password: string) {
-    return db.signInWithPassword(email, password);
+    return withLocalizedError(db.signInWithPassword(email, password));
   }
 
   async function signUpWithEmail(email: string, password: string, fullName: string, requestedRole: SignupRole = 'congregant', church?: SignupChurch) {
-    return db.signUp(email, password, fullName, requestedRole, Linking.createURL('auth-callback'), church);
+    return withLocalizedError(db.signUp(email, password, fullName, requestedRole, Linking.createURL('auth-callback'), church));
   }
 
   async function signInWithMagicLink(email: string) {
-    return db.signInWithOtp(email, Linking.createURL('auth-callback'));
+    return withLocalizedError(db.signInWithOtp(email, Linking.createURL('auth-callback')));
   }
 
   async function resetPassword(email: string) {
-    return db.resetPasswordForEmail(email, Linking.createURL('auth-callback'));
+    return withLocalizedError(db.resetPasswordForEmail(email, Linking.createURL('auth-callback')));
   }
 
   async function signOut() {
@@ -235,9 +255,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // its local data, and the keypair (useless now, and the key to what it sealed).
   async function deleteAccount(): Promise<{ error: string | null }> {
     const userId = session?.user?.id;
-    if (!userId) return { error: 'Sign in again, then try deleting your account.' };
+    if (!userId) return { error: S.account.deleteAccount.signInAgain };
     const { error } = await db.deleteMyAccount();
-    if (error) return { error };
+    if (error) return { error: localizeAuthError(error) };
     await clearUserStorage(userId).catch(() => {});
     await forgetLocalKeypair();
     await db.signOutLocally();

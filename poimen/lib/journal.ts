@@ -11,6 +11,10 @@
 import { supabase } from '@/lib/supabase';
 import { sealForSelf, openForSelf } from '@/lib/crypto';
 
+// Saved as the title of an entry written without one. It is stored data, so it
+// stays English in every language; screens show S.journal.untitled for it.
+export const UNTITLED = 'Untitled';
+
 // The key that opens the journal isn't on this device (PIN recovery pending, or
 // the account started fresh), or the journal couldn't be fetched. Callers must
 // not save on top of a journal they couldn't read — that would replace it.
@@ -155,7 +159,7 @@ export async function migrateBlessingFlags(userId: string): Promise<Blessing[] |
     .map(e => ({
       id: `entry-${e.id}`,
       created_at: e.created_at,
-      text: e.title && e.title !== 'Untitled' ? `${e.title} — ${e.reflection}` : e.reflection,
+      text: e.title && e.title !== UNTITLED ? `${e.title} — ${e.reflection}` : e.reflection,
     }))
     .filter(b => !already.has(b.id));
 

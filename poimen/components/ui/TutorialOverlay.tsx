@@ -5,6 +5,9 @@ import {
 } from 'react-native';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import type { TutorialStep } from '@/lib/tutorial';
+import { S, fmt } from '@/lib/i18n';
+
+const T = S.tutorial;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -69,15 +72,15 @@ export function TutorialOverlay({ steps, currentIndex, onNext, onSkip, visible }
           <Text style={styles.body}>{step.body}</Text>
 
           {/* Step count */}
-          <Text style={styles.count}>{currentIndex + 1} of {steps.length}</Text>
+          <Text style={styles.count}>{fmt(T.stepCount, { n: currentIndex + 1, total: steps.length })}</Text>
 
           {/* Actions */}
           <View style={styles.actions}>
             <TouchableOpacity onPress={onSkip} style={styles.skipBtn}>
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={styles.skipText}>{S.common.skip}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onNext} style={styles.nextBtn}>
-              <Text style={styles.nextText}>{isLast ? 'DONE' : 'NEXT'}</Text>
+              <Text style={styles.nextText}>{isLast ? T.done : T.next}</Text>
             </TouchableOpacity>
           </View>
 

@@ -12,10 +12,25 @@
 // Edge Function, would lift that if web needs it.)
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { S, lang, isRTL } from '@/lib/i18n';
 
-const CACHE_KEY = 'poimen.lectionary.gospel';
+// One cache per language, so a reading fetched in English is never shown in
+// Arabic or the reverse. English keeps the original key.
+const CACHE_KEY = lang === 'ar' ? 'poimen.lectionary.gospel.ar' : 'poimen.lectionary.gospel';
 const API = 'https://api.katameros.app/readings/gregorian';
 const NKJV_BIBLE_ID = 2;
+// In Arabic the same API serves the same lectionary in its own Arabic text
+// (language 3, the Van Dyck Bible). It is requested, never translated here.
+const ARABIC_LANGUAGE_ID = 3;
+const VAN_DYCK_BIBLE_ID = 11;
+const QUERY = lang === 'ar'
+  ? `languageId=${ARABIC_LANGUAGE_ID}&bibleId=${VAN_DYCK_BIBLE_ID}`
+  : `bibleId=${NKJV_BIBLE_ID}`;
+// The API's titles are translated ("Liturgy" / «قداس»), its ids are not, so
+// the reading is found by id in every language.
+const LITURGY_SECTION_ID = 3;
+const PSALM_AND_GOSPEL_SUBSECTION_ID = 1;
+const PSALMS_BOOK_ID = 19;
 
 export interface GospelVerse { number: number; text: string; }
 export interface GospelPassage { book: string; chapter: number; ref: string; verses: GospelVerse[]; }
@@ -47,17 +62,17 @@ export async function fetchDayGospel(date: Date = new Date()): Promise<DayGospel
   } catch {}
 
   try {
-    const res = await fetch(`${API}/${ddmmyyyy(date)}?bibleId=${NKJV_BIBLE_ID}`);
+    const res = await fetch(`${API}/${ddmmyyyy(date)}?${QUERY}`);
     if (!res.ok) return null;
     const data = await res.json();
-    const liturgy = (data?.sections ?? []).find((s: any) => s?.title === 'Liturgy');
-    const psalmGospel = (liturgy?.subSections ?? []).find((ss: any) => String(ss?.title ?? '').includes('Gospel'));
+    const liturgy = (data?.sections ?? []).find((s: any) => s?.id === LITURGY_SECTION_ID);
+    const psalmGospel = (liturgy?.subSections ?? []).find((ss: any) => ss?.id === PSALM_AND_GOSPEL_SUBSECTION_ID);
 
     const passages: GospelPassage[] = [];
     for (const reading of psalmGospel?.readings ?? []) {
       for (const p of reading?.passages ?? []) {
         const book = String(p?.bookTranslation ?? '');
-        if (!book || book.startsWith('Psalm')) continue; // skip the psalm before the Gospel
+        if (!book || Number(p?.bookId) === PSALMS_BOOK_ID) continue; // skip the psalm before the Gospel
         const verses: GospelVerse[] = (p?.verses ?? [])
           .map((v: any) => ({ number: Number(v?.number), text: String(v?.text ?? '').trim() }))
           .filter((v: GospelVerse) => v.text && Number.isFinite(v.number));
@@ -68,7 +83,7 @@ export async function fetchDayGospel(date: Date = new Date()): Promise<DayGospel
 
     const reference = passages
       .map((p, i) => (i === 0 || passages[i - 1].book !== p.book ? `${p.book} ${p.ref}` : p.ref))
-      .join('; ');
+      .join(S.calendar.referenceSeparator);
     const result: DayGospel = { date: key, reference, passages };
     try { await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch {}
     return result;
@@ -86,6 +101,9 @@ export function gospelExcerpt(g: DayGospel, maxVerses = 3): { text: string; ref:
   const verses = p.verses.slice(-maxVerses);
   const first = verses[0];
   const last = verses[verses.length - 1];
-  const ref = `${p.book} ${p.chapter}:${first.number}${last.number > first.number ? `–${last.number}` : ''}`;
+  // In Arabic the dash is held between left-to-right marks so "1:9–11" stays
+  // one left-to-right run after the Arabic book name.
+  const dash = isRTL ? '\u200E–\u200E' : '–';
+  const ref = `${p.book} ${p.chapter}:${first.number}${last.number > first.number ? `${dash}${last.number}` : ''}`;
   return { text: verses.map(v => v.text).join(' '), ref };
 }

@@ -10,6 +10,10 @@ import { CandleIcon } from '@/components/ui/TabIcons';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
+import { S, fmt, plural, fmtDate, GLYPH } from '@/lib/i18n';
+
+const T = S.servant.list;
+const D = S.demo.servant;
 
 interface Student {
   id: string;
@@ -22,8 +26,8 @@ interface Student {
 }
 
 const DEMO_STUDENTS: Student[] = [
-  { id: 'demo-s1', initials: 'JM', name: 'John Mark', canonCount: 2, lastActivity: '2 days ago' },
-  { id: 'demo-s2', initials: 'EM', name: 'Esther Mikhail', canonCount: 1, lastActivity: '5 days ago' },
+  { id: 'demo-s1', initials: D.johnMark.initials, name: D.johnMark.name, canonCount: 2, lastActivity: plural(S.common.daysAgo, 2) },
+  { id: 'demo-s2', initials: D.esther.initials, name: D.esther.name, canonCount: 1, lastActivity: plural(S.common.daysAgo, 5) },
 ];
 
 export default function ServantFlockScreen() {
@@ -35,8 +39,8 @@ export default function ServantFlockScreen() {
   const [loading, setLoading] = useState(!demoMode);
   const [search, setSearch] = useState('');
 
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const greeting = profile?.full_name?.split(' ')[0] ?? 'Servant';
+  const today = fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric' });
+  const greeting = profile?.full_name?.split(' ')[0] ?? S.common.roleServant;
 
   // Reload on focus (not just mount) so changes made in the student detail —
   // e.g. a roster photo added there — show up when returning to the list.
@@ -69,7 +73,7 @@ export default function ServantFlockScreen() {
     const mapped: Student[] = profiles.map(p => {
       const parts = (p.full_name ?? '?').split(' ');
       const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-      return { id: p.id, initials: init, name: p.full_name ?? 'Unknown', canonCount: canonCountByStudent[p.id] ?? 0, lastActivity: null, avatarUrl: p.avatar_url ?? myPhotos[p.id] ?? null };
+      return { id: p.id, initials: init, name: p.full_name ?? T.unknownName, canonCount: canonCountByStudent[p.id] ?? 0, lastActivity: null, avatarUrl: p.avatar_url ?? myPhotos[p.id] ?? null };
     });
 
     setStudents(mapped);
@@ -92,40 +96,40 @@ export default function ServantFlockScreen() {
               <Text style={styles.menuBtnText}>☰</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={styles.pageTitle}>My Students</Text>
+              <Text style={styles.pageTitle}>{T.title}</Text>
               <Text style={styles.pageSubtitle}>{today} · {greeting}</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.switchBtn} onPress={() => router.push('/(tabs)')}>
-            <Text style={styles.switchBtnText}>MY VIEW</Text>
+            <Text style={styles.switchBtnText}>{T.myView}</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.flockMeta}>
-          {students.length} student{students.length !== 1 ? 's' : ''}
+          {plural(T.studentCount, students.length)}
           {students.filter(s => s.canonCount > 0).length > 0
-            ? ` · ${students.filter(s => s.canonCount > 0).length} with active canon`
+            ? ` · ${plural(T.withActiveCanon, students.filter(s => s.canonCount > 0).length)}`
             : ''}
         </Text>
 
         <TextInput
           style={styles.search}
-          placeholder="Search students..."
+          placeholder={T.searchPlaceholder}
           placeholderTextColor={colors.faint}
           value={search}
           onChangeText={setSearch}
         />
 
-        <Card title={`Students (${filtered.length})`} flat>
+        <Card title={fmt(T.cardTitle, { n: filtered.length })} flat>
           {loading ? (
             <ActivityIndicator color={colors.gold} style={{ paddingVertical: 20 }} />
           ) : filtered.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>{students.length === 0 ? 'No students yet' : 'No matches'}</Text>
+              <Text style={styles.emptyTitle}>{students.length === 0 ? T.emptyTitle : T.noMatchesTitle}</Text>
               <Text style={styles.emptyBody}>
                 {students.length === 0
-                  ? 'Students who list you as their servant will appear here.'
-                  : 'Try a different search.'}
+                  ? T.emptyBody
+                  : T.noMatchesBody}
               </Text>
             </View>
           ) : (
@@ -141,16 +145,16 @@ export default function ServantFlockScreen() {
                   <Text style={styles.studentName}>{student.name}</Text>
                   <View style={styles.studentMeta}>
                     <CandleIcon size={12} color={colors.muted} />
-                    <Text style={styles.metaItem}>{student.canonCount} canon{student.canonCount !== 1 ? 's' : ''}</Text>
+                    <Text style={styles.metaItem}>{plural(T.canonCount, student.canonCount)}</Text>
                     {student.lastActivity && (
                       <>
                         <Text style={styles.metaDot}>·</Text>
-                        <Text style={styles.metaItem}>Active {student.lastActivity}</Text>
+                        <Text style={styles.metaItem}>{fmt(T.lastActive, { when: student.lastActivity })}</Text>
                       </>
                     )}
                   </View>
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.chevron}>{GLYPH.forward}</Text>
               </TouchableOpacity>
             ))
           )}
@@ -158,7 +162,7 @@ export default function ServantFlockScreen() {
 
         <View style={styles.scopeNote}>
           <Text style={styles.scopeNoteText}>
-            ✦ As a Sunday School servant, you can assign Bible reading and prayer canons to your students. Confession and counseling records are handled by your Father of Confession.
+            {T.scopeNote}
           </Text>
         </View>
 

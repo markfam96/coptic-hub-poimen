@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
+import { S } from '@/lib/i18n';
 
 // Safety net for any unmatched URL (bad deep link, stale bookmark on web).
 // Without this, expo-router shows its developer-styled "Unmatched Route"
@@ -13,10 +14,10 @@ export default function NotFoundScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.center}>
         <Text style={styles.cross}>✝︎</Text>
-        <Text style={styles.title}>Page not found</Text>
-        <Text style={styles.body}>That link doesn't lead anywhere in Nepsis.</Text>
+        <Text style={styles.title}>{S.shell.notFound.title}</Text>
+        <Text style={styles.body}>{S.shell.notFound.body}</Text>
         <TouchableOpacity style={styles.btn} onPress={() => router.replace('/')}>
-          <Text style={styles.btnText}>GO HOME</Text>
+          <Text style={styles.btnText}>{S.shell.notFound.goHome}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

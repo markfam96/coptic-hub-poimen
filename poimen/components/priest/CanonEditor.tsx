@@ -35,6 +35,7 @@ import {
   RuleConfig, DEFAULT_RULE, ReadMode,
   AGPEYA_HOURS, SERVICES, CONFESSION_OPTIONS, SERVICE_FREQUENCY_OPTIONS,
   FAST_UNTIL_OPTIONS, WEEKDAYS, MAX_SERVICE_COUNT, setServicesMode,
+  WEEKDAY_NAMES, WEEKDAY_SHORT, freqLabel, fastUntilLabel,
 } from '@/lib/canon/rule-store';
 import { periodUnit, maxPerPeriod } from '@/lib/canon/periods';
 import {
@@ -44,10 +45,14 @@ import {
 } from '@/lib/canon/assigned';
 import {
   CanonTemplate, CanonTemplateBody, loadTemplates, saveTemplate, replaceTemplate,
-  renameTemplate, deleteTemplate, describeTemplate,
+  renameTemplate, deleteTemplate,
 } from '@/lib/canon/templates';
 import { confirmDestructive } from '@/lib/confirm';
+import { STORED, SHOWN, summarizePayload, describeAssigned, type SummaryWords } from '@/lib/canon/describe';
 import { loadMemberRule } from '@/lib/canon/rule-sync';
+import { S, fmt, plural, GLYPH, isRTL } from '@/lib/i18n';
+
+const T = S.canonEditor;
 
 // Scheduling choices for custom components. The member's canon shows one on
 // its chosen weekdays; frequencies longer than weekly rest for their period
@@ -56,6 +61,25 @@ const CUSTOM_FREQUENCIES = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quar
 
 const SP = { xs: 6, sm: 10, md: 14, lg: 20 };
 const R = { md: 10, lg: 12, full: 999 };
+
+// Frequencies and the "fast until" time are saved and sent as they are;
+// freqLabel and fastUntilLabel (rule-store) only word them for the screen.
+// The picker shows these and hands one back; its index gives the stored value.
+const FAST_UNTIL_LABELS = FAST_UNTIL_OPTIONS.map(fastUntilLabel);
+
+// A name set inside a capitalised English button. Arabic has no capitals, and
+// a Latin name inside an Arabic sentence is left as it was written.
+const upper = (name: string) => (isRTL ? name : name.toUpperCase());
+
+// A one-line description of what a template sets, for the picker rows. Each
+// part carries the English summary it was saved with. Where that is the
+// summary this editor writes, it is shown again in the app's language;
+// anything else is shown as it was stored.
+function describeTemplateRow(t: CanonTemplate): string {
+  const bits = t.body.parts.map(p => describeAssigned(p.component, p.category, p.payload)).filter(Boolean);
+  if (t.body.custom.length) bits.push(plural(T.templates.customCount, t.body.custom.length));
+  return bits.length ? bits.join(' · ') : T.templates.emptyTemplate;
+}
 
 // ─── Small controls ───────────────────────────────────────────────────────────
 
@@ -98,7 +122,7 @@ function CatCard({ category, assigned, onToggle, summary, icon, children }: {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
           {icon}
           <View style={{ flex: 1 }}>
-            <Text style={s.cardTitle}>{CATEGORY_LABEL[category]}</Text>
+            <Text style={s.cardTitle}>{T.categories[category]}</Text>
             {!assigned && summary ? <Text style={s.cardSummary}>{summary}</Text> : null}
           </View>
         </View>
@@ -167,7 +191,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
   const router = useRouter();
   const { user } = useSession();
   const { demoMode } = useDemoMode();
-  const displayName = memberName || 'Member';
+  const displayName = memberName || T.page.memberFallback;
   // No member behind the screen: the Canon tab, where templates are built.
   // Nothing in this mode can reach a member's canon.
   const templateMode = !memberId;
@@ -261,7 +285,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     const w = work!;
     const parts = STRUCTURED_CATEGORIES
       .filter(cat => enabled.has(cat))
-      .map(cat => ({ category: cat, component: `${CATEGORY_LABEL[cat]} — ${summarize(cat, w)}`, payload: buildPayload(cat, w) }));
+      .map(cat => ({ category: cat, component: `${CATEGORY_LABEL[cat]} — ${summarize(cat, w, STORED)}`, payload: buildPayload(cat, w) }));
     const pending = newCustom.trim() ? [{ text: newCustom.trim(), freq: 'Daily', days: [] as number[] }] : [];
     const custom = [...customList, ...pending]
       .filter(c => c.text.trim())
@@ -309,10 +333,10 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
       // Opening a template for editing, not filling in someone's canon.
       setEditing(t);
       setTemplateName(t.name);
-      setTemplateMsg(`Editing “${t.name}”. Tap it again to take it back out.`);
+      setTemplateMsg(fmt(T.templates.msgEditing, { name: t.name }));
       return;
     }
-    setTemplateMsg(`Applied “${t.name}” — review it, then Save to assign. Tap it again to undo.`);
+    setTemplateMsg(fmt(T.templates.msgApplied, { name: t.name }));
   }
 
   // A template on screen was just written over: what it now holds is what
@@ -335,7 +359,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     setApplied(null);
     setTemplateErr('');
     if (templateMode) { setEditing(null); setTemplateName(''); }
-    setTemplateMsg(`Removed “${applied.name}” — the ${templateMode ? 'builder' : 'canon'} is back as it was.`);
+    setTemplateMsg(fmt(templateMode ? T.templates.msgRemovedBuilder : T.templates.msgRemovedCanon, { name: applied.name }));
   }
 
   // Start a fresh template from nothing, rather than from whatever is on screen.
@@ -357,9 +381,9 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     // No longer a template laid over the builder — it is the priest's own draft
     // now, so there is nothing left to "take back out".
     setApplied(null);
-    setTemplateName(`${from} (copy)`);
+    setTemplateName(fmt(T.templates.copyName, { name: from }));
     setTemplateErr('');
-    setTemplateMsg(`“${from}” is left as it is. Name this one and tap Create template.`);
+    setTemplateMsg(fmt(T.templates.msgDetached, { name: from }));
   }
 
   // The bottom action in template mode. What it does follows the NAME FIELD:
@@ -376,7 +400,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     setTemplateErr(''); setTemplateMsg('');
     const body = currentTemplateBody();
     if (!body.parts.length && !body.custom.length) {
-      setTemplateErr('Turn on at least one part of the canon first.'); return;
+      setTemplateErr(T.templates.errNothingOn); return;
     }
     const name = templateName.trim();
     if (editing && (!name || name === editing.name)) {
@@ -387,7 +411,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
       setEditing({ ...editing, body });
       noteTemplateSaved(editing.id, editing.name, body);
       await refreshTemplates();
-      setTemplateMsg(`Saved “${editing.name}”.`);
+      setTemplateMsg(fmt(T.templates.msgSaved, { name: editing.name }));
       return;
     }
     const from = editing?.name ?? null;
@@ -398,8 +422,8 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     // setting it first left a create with no confirmation at all.
     startNewTemplate();
     setTemplateMsg(from
-      ? `Created “${name}” — “${from}” is untouched. The builder is clear.`
-      : `Created “${name}”. The builder is clear for the next one.`);
+      ? fmt(T.templates.msgCreatedFrom, { name, from })
+      : fmt(T.templates.msgCreated, { name }));
   }
 
   // The deliberate destructive path: the open template keeps its identity but
@@ -411,10 +435,10 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     setTemplateErr(''); setTemplateMsg('');
     const body = currentTemplateBody();
     if (!body.parts.length && !body.custom.length) {
-      setTemplateErr('Turn on at least one part of the canon first.'); return;
+      setTemplateErr(T.templates.errNothingOn); return;
     }
     const renamed = templateName.trim();
-    if (!renamed) { setTemplateErr('Give the template a name.'); return; }
+    if (!renamed) { setTemplateErr(T.templates.errNameRequired); return; }
     const { error } = await replaceTemplate(editing.id, demoMode, body);
     if (error) { setTemplateErr(error); return; }
     if (renamed !== editing.name) {
@@ -425,7 +449,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     setEditing({ ...editing, name: renamed, body });
     noteTemplateSaved(editing.id, renamed, body);
     await refreshTemplates();
-    setTemplateMsg(`Saved “${renamed}” (was “${was}”).`);
+    setTemplateMsg(fmt(T.templates.msgRenamed, { name: renamed, was }));
   }
 
   async function handleSaveTemplate() {
@@ -434,7 +458,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     const { error } = await saveTemplate(user?.id ?? '', demoMode, templateName, body);
     if (error) { setTemplateErr(error); return; }
     setTemplateName(''); setShowTemplateSave(false);
-    setTemplateMsg('Template saved.');
+    setTemplateMsg(T.templates.msgTemplateSaved);
     await refreshTemplates();
   }
 
@@ -444,12 +468,12 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     const { error } = await replaceTemplate(t.id, demoMode, body);
     if (error) { setTemplateErr(error); return; }
     noteTemplateSaved(t.id, t.name, body);
-    setTemplateMsg(`Updated “${t.name}”.`);
+    setTemplateMsg(fmt(T.templates.msgUpdated, { name: t.name }));
     await refreshTemplates();
   }
 
   function handleDeleteTemplate(t: CanonTemplate) {
-    confirmDestructive('Delete template', `Remove “${t.name}”? Canons already assigned from it are not affected.`, 'Delete', async () => {
+    confirmDestructive(T.templates.deleteTitle, fmt(T.templates.deleteBody, { name: t.name }), S.common.delete, async () => {
       const { error } = await deleteTemplate(t.id, demoMode);
       if (error) { setTemplateErr(error); return; }
       await refreshTemplates();
@@ -482,21 +506,9 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
     }
   }
 
-  function summarize(cat: AssignedCategory, w: RuleConfig): string {
-    switch (cat) {
-      case 'prostrations':     return `${w.prostrations} metanias`;
-      case 'quiet':            return `${w.quietMinutes} min`;
-      case 'fasting':          return `until ${w.fastUntil}`;
-      case 'bible':            return `${w.bible.amount} ${w.bible.mode}`;
-      case 'book':             return w.book?.title || 'a spiritual book';
-      case 'confession':       return w.confession;
-      case 'agpeya_hours':     return `${w.days.reduce((n, d) => n + d.hours.length, 0)} hour-days`;
-      case 'services':         return w.servicesMode === 'counts'
-                                 ? `${Object.values(w.serviceCounts ?? {}).reduce((n, c) => n + c.n, 0)}× / period`
-                                 : `${w.days.reduce((n, d) => n + d.services.length, 0)} service-days`;
-      case 'heart_of_service': return `${w.days.reduce((n, d) => n + d.serving.filter(x => x.text.trim()).length, 0)} commitments`;
-      default:                 return '';
-    }
+  // Worded for the screen unless STORED is asked for (the saved `component`).
+  function summarize(cat: AssignedCategory, w: RuleConfig, words: SummaryWords = SHOWN): string {
+    return summarizePayload(cat, buildPayload(cat, w), words);
   }
 
   async function handleSave() {
@@ -513,7 +525,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
           if (changed) {
             await assignCategory({
               memberId: memberId ?? '', priestId: user?.id ?? '', demoMode,
-              category: cat, component: `${CATEGORY_LABEL[cat]} — ${summarize(cat, work)}`, payload,
+              category: cat, component: `${CATEGORY_LABEL[cat]} — ${summarize(cat, work, STORED)}`, payload,
             });
           }
         } else if (orig.has(cat)) {
@@ -560,7 +572,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
       setTimeout(() => router.back(), 1100);
     } catch {
       setSaving(false);
-      setSaveError('Could not save the canon — please try again.');
+      setSaveError(T.save.error);
     }
   }
 
@@ -577,30 +589,30 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
       <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {!templateMode && (
           <TouchableOpacity style={s.backRow} onPress={() => router.back()}>
-            <Text style={s.backArrow}>‹</Text><Text style={s.backText}>{displayName}</Text>
+            <Text style={s.backArrow}>{GLYPH.back}</Text><Text style={s.backText}>{displayName}</Text>
           </TouchableOpacity>
         )}
         <Text style={s.pageTitle}>
-          {templateMode ? 'Canon Builder' : `Build ${displayName.split(' ')[0]}'s Canon`}
+          {templateMode ? T.page.builderTitle : fmt(T.page.memberTitle, { name: displayName.split(' ')[0] })}
         </Text>
         <Text style={s.pageSub}>
           {templateMode
-            ? 'Build a canon here and keep it as a template, ready to apply to anyone in your flock. Nothing on this screen belongs to a member — assigning happens from their own canon.'
-            : 'Turn on a category to assign it. Assigned parts are locked for the member until their next confession, or until you change or remove them. Untouched categories stay as the member set them.'}
+            ? T.page.builderIntro
+            : T.page.memberIntro}
         </Text>
 
         {/* Templates — start from a canon you prescribe often, or keep this one
             for next time. Building from scratch below is unchanged. */}
         <View style={s.tplCard}>
           <View style={s.tplHead}>
-            <Text style={s.tplTitle}>{templateMode ? 'My Templates' : 'Templates'}</Text>
+            <Text style={s.tplTitle}>{templateMode ? T.templates.titleMine : T.templates.title}</Text>
             {templateMode ? (
               <TouchableOpacity onPress={startNewTemplate} hitSlop={8}>
-                <Text style={s.tplAction}>+ New template</Text>
+                <Text style={s.tplAction}>{T.templates.newTemplate}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity onPress={() => { setShowTemplateSave(v => !v); setTemplateErr(''); setTemplateMsg(''); }} hitSlop={8}>
-                <Text style={s.tplAction}>{showTemplateSave ? 'Cancel' : '+ Save this canon'}</Text>
+                <Text style={s.tplAction}>{showTemplateSave ? S.common.cancel : T.templates.saveThisCanon}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -609,16 +621,16 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
             <View style={s.tplSaveRow}>
               <TextInput
                 style={[s.input, { marginBottom: SP.xs }]}
-                placeholder="Name it — e.g. New believer, Youth, Lent"
+                placeholder={T.templates.saveNamePlaceholder}
                 placeholderTextColor={colors.muted}
                 value={templateName}
                 onChangeText={setTemplateName}
               />
               <TouchableOpacity style={s.tplSaveBtn} onPress={handleSaveTemplate}>
-                <Text style={s.tplSaveBtnText}>SAVE AS TEMPLATE</Text>
+                <Text style={s.tplSaveBtnText}>{T.templates.saveAsTemplate}</Text>
               </TouchableOpacity>
               <Text style={s.tplHint}>
-                Saves the categories switched on right now, with their values and any custom components.
+                {T.templates.saveHint}
               </Text>
             </View>
           )}
@@ -626,8 +638,8 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
           {templates.length === 0 ? (
             <Text style={s.tplEmpty}>
               {templateMode
-                ? 'No templates yet. Switch on the parts of the canon below, name it, and save — then it’s one tap on any member’s canon.'
-                : 'No templates yet. Build them in the Canon tab, or “Save this canon” to reuse this one.'}
+                ? T.templates.emptyBuilder
+                : T.templates.emptyMember}
             </Text>
           ) : (
             templates.map(t => {
@@ -638,13 +650,13 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                 <TouchableOpacity style={{ flex: 1 }} onPress={() => useTemplate(t)} activeOpacity={0.8}>
                   <Text style={[s.tplName, on && s.tplNameOn]}>{on ? '✓ ' : ''}{t.name}</Text>
                   <Text style={[s.tplDesc, on && s.tplDescOn]} numberOfLines={2}>
-                    {!on ? describeTemplate(t)
-                      : templateMode ? 'Open — tap to close' : 'Applied — tap to undo'}
+                    {!on ? describeTemplateRow(t)
+                      : templateMode ? T.templates.openHint : T.templates.appliedHint}
                   </Text>
                 </TouchableOpacity>
                 {!templateMode && (
                   <TouchableOpacity onPress={() => handleReplaceTemplate(t)} hitSlop={8}>
-                    <Text style={s.tplUpdate}>Update</Text>
+                    <Text style={s.tplUpdate}>{S.common.update}</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={() => handleDeleteTemplate(t)} hitSlop={8}>
@@ -661,41 +673,41 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
 
         {/* Every day */}
         <CatCard category="prostrations" assigned={enabled.has('prostrations')} onToggle={o => toggle('prostrations', o)} summary={summarize('prostrations', work)}>
-          <Stepper value={work.prostrations} onChange={n => patch({ prostrations: n })} max={500} unit="metanias" />
+          <Stepper value={work.prostrations} onChange={n => patch({ prostrations: n })} max={500} unit={plural(T.units.metanias, work.prostrations)} />
         </CatCard>
 
         <CatCard category="quiet" assigned={enabled.has('quiet')} onToggle={o => toggle('quiet', o)} summary={summarize('quiet', work)}>
-          <Stepper value={work.quietMinutes} onChange={n => patch({ quietMinutes: n })} step={5} max={180} unit="min" />
+          <Stepper value={work.quietMinutes} onChange={n => patch({ quietMinutes: n })} step={5} max={180} unit={plural(T.units.minutes, work.quietMinutes)} />
         </CatCard>
 
         <CatCard category="fasting" assigned={enabled.has('fasting')} onToggle={o => toggle('fasting', o)} summary={summarize('fasting', work)}>
-          <Text style={[s.subLabel, { textAlign: 'right', color: colors.goldLight }]}>{work.fastUntil}</Text>
-          <ScrollPicker options={FAST_UNTIL_OPTIONS} value={work.fastUntil} onChange={v => patch({ fastUntil: v })} />
+          <Text style={[s.subLabel, s.fastValue]}>{fastUntilLabel(work.fastUntil)}</Text>
+          <ScrollPicker options={FAST_UNTIL_LABELS} value={fastUntilLabel(work.fastUntil)} onChange={v => patch({ fastUntil: FAST_UNTIL_OPTIONS[FAST_UNTIL_LABELS.indexOf(v)] ?? v })} />
         </CatCard>
 
         <CatCard category="bible" assigned={enabled.has('bible')} onToggle={o => toggle('bible', o)} summary={summarize('bible', work)}>
           <View style={s.chipRow}>
-            <Chip label="Chapters" on={work.bible.mode === 'chapters'} onPress={() => patch({ bible: { ...work.bible, mode: 'chapters' as ReadMode } })} />
-            <Chip label="Minutes" on={work.bible.mode === 'minutes'} onPress={() => patch({ bible: { ...work.bible, mode: 'minutes' as ReadMode } })} />
+            <Chip label={T.cards.bibleChapters} on={work.bible.mode === 'chapters'} onPress={() => patch({ bible: { ...work.bible, mode: 'chapters' as ReadMode } })} />
+            <Chip label={T.cards.bibleMinutes} on={work.bible.mode === 'minutes'} onPress={() => patch({ bible: { ...work.bible, mode: 'minutes' as ReadMode } })} />
           </View>
           <Stepper value={work.bible.amount} onChange={n => patch({ bible: { ...work.bible, amount: n } })} step={work.bible.mode === 'minutes' ? 5 : 1} max={180}
-            unit={work.bible.mode === 'minutes' ? 'min' : work.bible.amount === 1 ? 'chapter' : 'chapters'} />
+            unit={plural(work.bible.mode === 'minutes' ? T.units.minutes : T.units.bibleChapters, work.bible.amount)} />
         </CatCard>
 
         <CatCard category="book" assigned={enabled.has('book')} onToggle={o => { toggle('book', o); if (o && !work.book) patch({ book: { title: '', mode: 'chapters', amount: 1 } }); }} summary={summarize('book', work)}>
-          <TextInput style={s.input} placeholder="Book title (e.g. The Spiritual Ladder)" placeholderTextColor={colors.muted}
+          <TextInput style={s.input} placeholder={T.cards.bookPlaceholder} placeholderTextColor={colors.muted}
             value={work.book?.title ?? ''} onChangeText={t => patch({ book: { title: t, mode: work.book?.mode ?? 'chapters', amount: work.book?.amount ?? 1 } })} />
           <View style={[s.chipRow, { marginTop: SP.sm }]}>
-            <Chip label="Chapters" on={work.book?.mode === 'chapters'} onPress={() => patch({ book: { title: work.book?.title ?? '', mode: 'chapters', amount: work.book?.amount ?? 1 } })} />
-            <Chip label="Minutes" on={work.book?.mode === 'minutes'} onPress={() => patch({ book: { title: work.book?.title ?? '', mode: 'minutes', amount: work.book?.amount ?? 1 } })} />
+            <Chip label={T.cards.bookChapters} on={work.book?.mode === 'chapters'} onPress={() => patch({ book: { title: work.book?.title ?? '', mode: 'chapters', amount: work.book?.amount ?? 1 } })} />
+            <Chip label={T.cards.bookMinutes} on={work.book?.mode === 'minutes'} onPress={() => patch({ book: { title: work.book?.title ?? '', mode: 'minutes', amount: work.book?.amount ?? 1 } })} />
           </View>
           <Stepper value={work.book?.amount ?? 1} onChange={n => patch({ book: { title: work.book?.title ?? '', mode: work.book?.mode ?? 'chapters', amount: n } })} step={work.book?.mode === 'minutes' ? 5 : 1} max={180}
-            unit={work.book?.mode === 'minutes' ? 'min' : (work.book?.amount ?? 1) === 1 ? 'chapter' : 'chapters'} />
+            unit={plural(work.book?.mode === 'minutes' ? T.units.minutes : T.units.bookChapters, work.book?.amount ?? 1)} />
         </CatCard>
 
         <CatCard category="confession" assigned={enabled.has('confession')} onToggle={o => toggle('confession', o)} summary={summarize('confession', work)}>
           <View style={[s.chipRow, { flexWrap: 'wrap' }]}>
-            {CONFESSION_OPTIONS.map(opt => <Chip key={opt} label={opt} on={work.confession === opt} onPress={() => patch({ confession: opt })} />)}
+            {CONFESSION_OPTIONS.map(opt => <Chip key={opt} label={freqLabel(opt)} on={work.confession === opt} onPress={() => patch({ confession: opt })} />)}
           </View>
         </CatCard>
 
@@ -707,14 +719,14 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
             {cat === 'services' && (
               <>
                 <View style={[s.chipRow, { flexWrap: 'wrap', marginBottom: SP.xs }]}>
-                  <Chip label="Specific days" on={work.servicesMode === 'days'}
+                  <Chip label={T.cards.specificDays} on={work.servicesMode === 'days'}
                     onPress={() => setWork(w => w ? setServicesMode(w, 'days') : w)} />
-                  <Chip label="Times per week" on={work.servicesMode === 'counts'}
+                  <Chip label={T.cards.timesPerWeek} on={work.servicesMode === 'counts'}
                     onPress={() => setWork(w => w ? setServicesMode(w, 'counts') : w)} />
                 </View>
                 {work.servicesMode === 'counts' && (
                   <>
-                    <Text style={s.fieldNote}>How often to attend each service, and how many times per period. The member logs each one as they attend.</Text>
+                    <Text style={s.fieldNote}>{T.cards.countsHelp}</Text>
                     {SERVICES.map(sv => {
                       // Per-service cadence, so a monthly communion and a weekly
                       // liturgy can be assigned in the same rule.
@@ -734,13 +746,13 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                           value={cfg?.n ?? 0}
                           onChange={n => setCount(n)}
                           max={maxPerPeriod(freq)}
-                          unit={periodUnit(freq)}
+                          unit={periodUnit(freq, T.periodUnits)}
                         />
                       </View>
                       {(cfg?.n ?? 0) > 0 && (
                         <View style={[s.chipRow, { flexWrap: 'wrap', marginBottom: SP.sm }]}>
                           {SERVICE_FREQUENCY_OPTIONS.map(f => (
-                            <Chip key={f} label={f} on={freq === f} onPress={() => setCount(cfg?.n ?? 1, f)} />
+                            <Chip key={f} label={freqLabel(f)} on={freq === f} onPress={() => setCount(cfg?.n ?? 1, f)} />
                           ))}
                         </View>
                       )}
@@ -752,9 +764,9 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
               </>
             )}
             {cat === 'services' && work.servicesMode === 'counts' ? null : (
-            <Text style={s.fieldNote}>Set what's prayed/served on each weekday. Tap a day to edit it.</Text>
+            <Text style={s.fieldNote}>{T.cards.daysHelp}</Text>
             )}
-            {(cat === 'services' && work.servicesMode === 'counts' ? [] : WEEKDAYS).map((name, i) => {
+            {(cat === 'services' && work.servicesMode === 'counts' ? [] : WEEKDAY_NAMES).map((name, i) => {
               const d = work.days[i];
               const open = expandDay === cat && expandDayIdx === i;
               const count = cat === 'agpeya_hours' ? d.hours.length : cat === 'services' ? d.services.length : d.serving.filter(x => x.text.trim()).length;
@@ -762,7 +774,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                 <View key={i} style={s.dayRow}>
                   <TouchableOpacity style={s.dayHead} onPress={() => setExpand(cat, i)}>
                     <Text style={s.dayName}>{name}</Text>
-                    <Text style={s.daySummary}>{count ? `${count} set` : 'none'}  {open ? '▲' : '▾'}</Text>
+                    <Text style={s.daySummary}>{count ? fmt(T.cards.daySet, { n: count }) : T.cards.dayNone}  {open ? '▲' : '▾'}</Text>
                   </TouchableOpacity>
                   {open && cat === 'agpeya_hours' && (
                     <View style={[s.chipRow, { flexWrap: 'wrap', marginTop: SP.xs }]}>
@@ -779,19 +791,19 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                       {d.serving.map((sv, j) => (
                         <View key={j} style={s.serveEntry}>
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <TextInput style={[s.input, { flex: 1 }]} placeholder="Service (e.g. visiting the sick)" placeholderTextColor={colors.muted}
+                            <TextInput style={[s.input, { flex: 1 }]} placeholder={T.cards.servicePlaceholder} placeholderTextColor={colors.muted}
                               value={sv.text} onChangeText={t => setServing(i, j, { text: t })} />
                             <TouchableOpacity onPress={() => setServingList(i, d.serving.filter((_, idx) => idx !== j))} hitSlop={8}>
-                              <Text style={{ color: colors.red, fontSize: 12, marginLeft: SP.sm }}>Remove</Text>
+                              <Text style={{ color: colors.red, fontSize: 12, marginStart: SP.sm }}>{S.common.remove}</Text>
                             </TouchableOpacity>
                           </View>
                           <View style={[s.chipRow, { flexWrap: 'wrap', marginTop: SP.xs }]}>
-                            {SERVICE_FREQUENCY_OPTIONS.map(opt => <Chip key={opt} label={opt} on={sv.freq === opt} onPress={() => setServing(i, j, { freq: opt })} />)}
+                            {SERVICE_FREQUENCY_OPTIONS.map(opt => <Chip key={opt} label={freqLabel(opt)} on={sv.freq === opt} onPress={() => setServing(i, j, { freq: opt })} />)}
                           </View>
                         </View>
                       ))}
                       <TouchableOpacity onPress={() => setServingList(i, [...d.serving, { text: '', freq: 'Weekly' }])} hitSlop={8}>
-                        <Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold, marginTop: 4 }}>+ Add commitment</Text>
+                        <Text style={{ color: colors.gold, fontSize: 12, fontFamily: fonts.latoBold, marginTop: 4 }}>{T.cards.addCommitment}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -805,15 +817,15 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
         <View style={s.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SP.sm }}>
             <PencilIcon size={16} color={colors.gold} />
-            <Text style={s.cardTitle}>Custom components</Text>
+            <Text style={s.cardTitle}>{T.custom.title}</Text>
           </View>
-          <Text style={s.fieldNote}>Free-text additions to the member's canon. Read-only for them; you manage these.</Text>
+          <Text style={s.fieldNote}>{T.custom.note}</Text>
           {customList.map((c, i) => (
             <View key={c.id ?? `new-${i}`} style={s.customBlock}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={s.customText}>{c.text}</Text>
                 <TouchableOpacity onPress={() => setCustomList(list => list.filter((_, idx) => idx !== i))} hitSlop={8}>
-                  <Text style={{ color: colors.red, fontSize: 12 }}>Remove</Text>
+                  <Text style={{ color: colors.red, fontSize: 12 }}>{S.common.remove}</Text>
                 </TouchableOpacity>
               </View>
               <View style={s.chipsRow}>
@@ -827,7 +839,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                       // the weekday selection.
                       idx === i ? { ...x, freq: f } : x))}
                   >
-                    <Text style={[s.schedChipTxt, c.freq === f && s.schedChipTxtOn]}>{f}</Text>
+                    <Text style={[s.schedChipTxt, c.freq === f && s.schedChipTxtOn]}>{freqLabel(f)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -842,62 +854,62 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
                           ? { ...x, days: x.days.includes(di) ? x.days.filter(v => v !== di) : [...x.days, di].sort((a, b) => a - b) }
                           : x))}
                     >
-                      <Text style={[s.schedChipTxt, c.days.includes(di) && s.schedChipTxtOn]}>{d.slice(0, 3)}</Text>
+                      <Text style={[s.schedChipTxt, c.days.includes(di) && s.schedChipTxtOn]}>{WEEKDAY_SHORT[di]}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
               {c.freq !== 'Daily' && c.days.length === 0 && (
-                <Text style={s.fieldNote}>No day chosen — it will show every day of the week.</Text>
+                <Text style={s.fieldNote}>{T.custom.noDay}</Text>
               )}
             </View>
           ))}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SP.sm }}>
-            <TextInput style={[s.input, { flex: 1 }]} placeholder="e.g. Read the Sayings of the Desert Fathers" placeholderTextColor={colors.muted}
+            <TextInput style={[s.input, { flex: 1 }]} placeholder={T.custom.placeholder} placeholderTextColor={colors.muted}
               value={newCustom} onChangeText={setNewCustom} />
             <TouchableOpacity
               onPress={() => { if (newCustom.trim()) { setCustomList(list => [...list, { text: newCustom.trim(), freq: 'Daily', days: [] }]); setNewCustom(''); } }}
               hitSlop={8}
             >
-              <Text style={{ color: colors.gold, fontSize: 13, fontFamily: fonts.latoBold, marginLeft: SP.sm }}>Add</Text>
+              <Text style={{ color: colors.gold, fontSize: 13, fontFamily: fonts.latoBold, marginStart: SP.sm }}>{S.common.add}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {templateMode ? (
           <View style={s.tplCommit}>
-            <Text style={s.formLabelSm}>{editing ? 'TEMPLATE NAME' : 'NAME THIS TEMPLATE'}</Text>
+            <Text style={s.formLabelSm}>{editing ? T.templates.nameLabel : T.templates.nameLabelNew}</Text>
             <TextInput
               style={s.input}
-              placeholder="e.g. New believer, Youth, Lent"
+              placeholder={T.templates.namePlaceholder}
               placeholderTextColor={colors.muted}
               value={templateName}
               onChangeText={setTemplateName}
             />
             {editing && nameChanged ? (
               <Text style={s.tplHint}>
-                A new name makes a new template — “{editing.name}” stays as it is.
+                {fmt(T.templates.newNameHint, { name: editing.name })}
               </Text>
             ) : null}
             {templateErr ? <Text style={s.errorText}>{templateErr}</Text> : null}
             {templateMsg ? <Text style={s.tplMsg}>{templateMsg}</Text> : null}
             <TouchableOpacity style={s.saveBtn} onPress={commitTemplate}>
               <Text style={s.saveBtnText}>
-                {!editing ? 'CREATE TEMPLATE'
-                  : nameChanged ? `CREATE “${templateName.trim().toUpperCase()}”`
-                  : `SAVE OVER “${editing.name.toUpperCase()}”`}
+                {!editing ? T.templates.create
+                  : nameChanged ? fmt(T.templates.createNamed, { name: upper(templateName.trim()) })
+                  : fmt(T.templates.saveOver, { name: upper(editing.name) })}
               </Text>
             </TouchableOpacity>
             {editing && (nameChanged ? (
               <TouchableOpacity style={s.tplSecondary} onPress={renameAndSaveOver}>
                 <Text style={s.tplSecondaryText}>
-                  Rename “{editing.name}” to “{templateName.trim()}” and save over it instead
+                  {fmt(T.templates.renameAndSaveOver, { from: editing.name, to: templateName.trim() })}
                 </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={s.tplSecondary} onPress={detachAsNew}>
                 <Text style={s.tplSecondaryText}>
-                  Keep “{editing.name}” and save these changes as a new template
+                  {fmt(T.templates.keepAndSaveNew, { name: editing.name })}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -908,7 +920,7 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
             <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
               {saving
                 ? <ActivityIndicator color={colors.navy} />
-                : <Text style={s.saveBtnText}>{saved ? `✓ SAVED TO ${displayName.split(' ')[0].toUpperCase()}` : `SAVE ${displayName.split(' ')[0].toUpperCase()}'S CANON`}</Text>}
+                : <Text style={s.saveBtnText}>{fmt(saved ? T.save.savedTo : T.save.saveCanon, { name: upper(displayName.split(' ')[0]) })}</Text>}
             </TouchableOpacity>
           </>
         )}
@@ -971,6 +983,7 @@ const s = lazyThemed(() => StyleSheet.create({
   cardTitle: { fontFamily: fonts.latoBold, fontSize: 14, color: colors.cream },
   cardSummary: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 2 },
   subLabel: { fontFamily: fonts.latoBold, fontSize: 11, color: colors.textSecond, marginBottom: 4 },
+  fastValue: { textAlign: 'right', color: colors.goldLight },
   fieldNote: { fontFamily: fonts.latoLight, fontSize: 11, lineHeight: 16, color: colors.muted, marginBottom: SP.sm },
 
   toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: colors.creamDim, padding: 3, justifyContent: 'center' },

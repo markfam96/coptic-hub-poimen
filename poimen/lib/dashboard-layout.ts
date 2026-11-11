@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { S } from '@/lib/i18n';
 
 // The top "vital tile" pair (confession + canon) is always shown — like Activity Rings in Apple Fitness.
 // The sections below are fully customizable.
@@ -10,11 +11,14 @@ export interface SectionDef {
   icon: string;
 }
 
+// The names live in the dictionary (home.customize.sections), keyed by id.
+const LABELS = S.home.customize.sections;
+
 export const SECTION_DEFS: Record<SectionId, SectionDef> = {
-  vitals:  { label: 'Spiritual Vitals', icon: '◉' },
-  journey: { label: 'Pastoral Journey', icon: '◎' },
-  feasts:  { label: 'Upcoming Feasts',  icon: '⊕' },
-  foc:     { label: 'My FOC',           icon: '◈' },
+  vitals:  { label: LABELS.vitals,  icon: '◉' },
+  journey: { label: LABELS.journey, icon: '◎' },
+  feasts:  { label: LABELS.feasts,  icon: '⊕' },
+  foc:     { label: LABELS.foc,     icon: '◈' },
 };
 
 export const DEFAULT_SECTIONS: SectionId[] = ['vitals', 'journey', 'feasts', 'foc'];

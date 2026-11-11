@@ -26,10 +26,13 @@ import * as H from '@/lib/haptics';
 import type { LeaderboardRow } from '@/lib/db/leaderboard';
 import {
   HOUR_LAYOUTS, itemsForPsalm, itemUnits, itemUnitCount, itemLeadUp, itemLabel,
-  itemReaderText, itemHours, itemMeta, hourName, prayerItemId,
+  itemReaderText, itemHours, itemMeta, hourName, prayerItemId, sectionHeading, hasArabicText,
 } from '@/lib/psalms/psalter';
 import { hydratePsalmsFromCloud, pushPsalmsToCloud } from '@/lib/psalms/sync';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { S, fmt, plural, GLYPH, isRTL, ltrText, directionStyle } from '@/lib/i18n';
+
+const T = S.psalms;
 
 const SP = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28 };
 const R = { md: 10, lg: 12, xl: 16, full: 999 };
@@ -41,9 +44,11 @@ function clozeText(text: string): string {
   const show = Math.max(3, Math.round(words.length * 0.45));
   const head = words.slice(0, show).join(' ');
   const tail = words.slice(show).map(w => {
-    const core = w.replace(/[^A-Za-z’']/g, '');
+    // Letters of any script (Arabic too); vowel marks and punctuation don't
+    // count toward the length of the blank.
+    const core = w.replace(/[^\p{L}’']/gu, '');
     const blank = '＿'.repeat(Math.min(Math.max(core.length, 1), 7));
-    const punct = w.match(/[.,;:!?)]+$/);
+    const punct = w.match(/[.,;:!?)،؛؟]+$/);
     return blank + (punct ? punct[0] : '');
   }).join(' ');
   return tail ? `${head} ${tail}` : head;
@@ -59,6 +64,9 @@ function CategoryTag({ item }: { item: string }) {
 }
 
 const PICKER_ITEM = 56;
+// The number strip is positioned by scroll offset, which counts from the left;
+// it stays left-to-right in every language.
+const PICKER_DIRECTION = directionStyle('ltr');
 
 function NumberPicker({ value, onScrub, onCommit, min, max }: {
   value: number; onScrub: (n: number) => void; onCommit: (n: number) => void;
@@ -79,7 +87,7 @@ function NumberPicker({ value, onScrub, onCommit, min, max }: {
   };
 
   return (
-    <View onLayout={e => setW(e.nativeEvent.layout.width)} style={styles.pickerWrap}>
+    <View onLayout={e => setW(e.nativeEvent.layout.width)} style={[styles.pickerWrap, PICKER_DIRECTION]}>
       <View pointerEvents="none" style={[styles.pickerHighlight, { borderColor: colors.gold }]} />
       <ScrollView
         ref={ref}
@@ -113,7 +121,7 @@ function GradeBtn({ label, sub, color, onPress }: { label: string; sub?: string;
 
 // When a portion comes back after a grade — "again today" for Wrong (it is
 // re-queued into this same session), otherwise the exact interval.
-const whenNext = (days: number) => (days === 1 ? '1 day' : `${days} days`);
+const whenNext = (days: number) => plural(S.common.days, days);
 
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -271,7 +279,7 @@ export default function PsalmsScreen() {
     return (
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} hitSlop={8}>
-          <Text style={styles.headerBack}>‹ {backLabel}</Text>
+          <Text style={styles.headerBack}>{GLYPH.back} {backLabel}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{title}</Text>
         <View style={{ width: 54 }} />
@@ -294,7 +302,7 @@ export default function PsalmsScreen() {
     const selected = selection.includes(reader);
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Reading" backLabel="Back" onBack={() => setReader(null)} />
+        <Header title={T.reader.title} backLabel={S.common.back} onBack={() => setReader(null)} />
         <ScrollView contentContainerStyle={{ padding: SP.lg, paddingBottom: 40 }}>
           <View style={styles.readerHead}>
             <Text style={styles.readerTitle}>{itemLabel(reader)}</Text>
@@ -307,14 +315,15 @@ export default function PsalmsScreen() {
             onPress={() => toggle(reader)}
           >
             <Text style={[styles.selBtnText, { color: selected ? colors.textSecond : colors.navy }]}>
-              {selected ? '✓ In your list — remove' : '+ Add to my list'}
+              {selected ? T.reader.inList : T.reader.addToList}
             </Text>
           </TouchableOpacity>
 
+          {isRTL && !hasArabicText(reader) && <Text style={[styles.scriptureNote, { marginTop: SP.lg }]}>{S.common.scriptureInEnglish}</Text>}
           {sections.map((text, i) => (
             <View key={i} style={{ marginTop: SP.lg }}>
-              {sections.length > 1 && <Text style={[styles.partLabel, { color: meta.color }]}>Section {i + 1} of {sections.length}</Text>}
-              <Text style={styles.psalmText}>{text}</Text>
+              {sections.length > 1 && <Text style={[styles.partLabel, { color: meta.color }]}>{fmt(T.reader.sectionOf, { n: i + 1, total: sections.length })}</Text>}
+              <Text style={[styles.psalmText, !hasArabicText(reader) && ltrText]}>{text}</Text>
             </View>
           ))}
         </ScrollView>
@@ -334,25 +343,26 @@ export default function PsalmsScreen() {
       return (
         <SafeAreaView style={styles.safe}>
           <View style={styles.sessionTop}>
-            <Text style={styles.sessionProgress}>{qIndex + 1} / {queue.length}</Text>
-            <TouchableOpacity onPress={() => setQueue(null)}><Text style={styles.linkGold}>End</Text></TouchableOpacity>
+            <Text style={styles.sessionProgress}>{fmt(T.progressOf, { n: qIndex + 1, total: queue.length })}</Text>
+            <TouchableOpacity onPress={() => setQueue(null)}><Text style={styles.linkGold}>{T.session.end}</Text></TouchableOpacity>
           </View>
           <View style={styles.sessionHead}>
             <Text style={styles.sessionTitle}>{itemLabel(unit.item)}</Text>
-            <Text style={[styles.newTag, { color: meta.color }]}>Recite it in full from memory</Text>
+            <Text style={[styles.newTag, { color: meta.color }]}>{T.session.reciteTag}</Text>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: SP.lg }}>
+            {revealed && isRTL && !hasArabicText(unit.item) && <Text style={[styles.scriptureNote, { marginBottom: SP.md }]}>{S.common.scriptureInEnglish}</Text>}
             {revealed ? (
               sections.map((t, i) => (
                 <View key={i} style={{ marginBottom: SP.md }}>
-                  {sections.length > 1 && <Text style={[styles.partLabel, { color: meta.color }]}>Section {i + 1} of {sections.length}</Text>}
-                  <Text style={styles.psalmText}>{t}</Text>
+                  {sections.length > 1 && <Text style={[styles.partLabel, { color: meta.color }]}>{fmt(T.reader.sectionOf, { n: i + 1, total: sections.length })}</Text>}
+                  <Text style={[styles.psalmText, !hasArabicText(unit.item) && ltrText]}>{t}</Text>
                 </View>
               ))
             ) : (
               <Text style={styles.testPrompt}>
-                Recite it aloud in full from memory, then reveal the text to check yourself.
+                {T.session.recitePrompt}
               </Text>
             )}
           </ScrollView>
@@ -360,13 +370,13 @@ export default function PsalmsScreen() {
           <View style={styles.sessionFoot}>
             {!revealed ? (
               <TouchableOpacity style={styles.revealBtn} onPress={() => setRevealed(true)}>
-                <Text style={styles.revealBtnText}>Reveal text</Text>
+                <Text style={styles.revealBtnText}>{T.session.revealText}</Text>
               </TouchableOpacity>
             ) : (
               <View style={[styles.gradeRow, busy && { opacity: 0.5 }]} pointerEvents={busy ? 'none' : 'auto'}>
-                <GradeBtn label="Forgot"     color={colors.red}   onPress={() => gradeRecite('fail')} />
-                <GradeBtn label="Some slips" color="#C4821A"      onPress={() => gradeRecite('partial')} />
-                <GradeBtn label="✓ Recited"  color={colors.green} onPress={() => gradeRecite('pass')} />
+                <GradeBtn label={T.session.forgot}    color={colors.red}   onPress={() => gradeRecite('fail')} />
+                <GradeBtn label={T.session.someSlips} color="#C4821A"      onPress={() => gradeRecite('partial')} />
+                <GradeBtn label={T.session.recited}   color={colors.green} onPress={() => gradeRecite('pass')} />
               </View>
             )}
           </View>
@@ -386,21 +396,22 @@ export default function PsalmsScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.sessionTop}>
-          <Text style={styles.sessionProgress}>{qIndex + 1} / {queue.length}</Text>
-          <TouchableOpacity onPress={() => setQueue(null)}><Text style={styles.linkGold}>End</Text></TouchableOpacity>
+          <Text style={styles.sessionProgress}>{fmt(T.progressOf, { n: qIndex + 1, total: queue.length })}</Text>
+          <TouchableOpacity onPress={() => setQueue(null)}><Text style={styles.linkGold}>{T.session.end}</Text></TouchableOpacity>
         </View>
         <View style={styles.sessionHead}>
           <Text style={styles.sessionTitle}>
-            {itemLabel(item)}{multi ? `  ·  portion ${part + 1}/${itemUnitCount(item)}` : ''}
+            {multi ? fmt(T.session.titlePortion, { label: itemLabel(item), n: part + 1, total: itemUnitCount(item) }) : itemLabel(item)}
           </Text>
-          {isNew && <Text style={[styles.newTag, { color: colors.green }]}>NEW — read & learn</Text>}
+          {isNew && <Text style={[styles.newTag, { color: colors.green }]}>{T.session.newTag}</Text>}
         </View>
 
         <ScrollView contentContainerStyle={{ padding: SP.lg }}>
           <Text style={[styles.cueLabel, { marginBottom: 12 }]}>
-            {revealed ? 'How well did you recall it?' : isNew ? 'New — fill in the blanks, then learn it' : 'Continue from memory — fill in the blanks'}
+            {revealed ? T.session.cueRevealed : isNew ? T.session.cueNew : T.session.cueReview}
           </Text>
-          <Text style={styles.psalmText}>
+          {isRTL && !hasArabicText(item) && <Text style={[styles.scriptureNote, { marginBottom: 12 }]}>{S.common.scriptureInEnglish}</Text>}
+          <Text style={[styles.psalmText, !hasArabicText(item) && ltrText]}>
             {lead ? <Text style={{ color: colors.muted }}>{lead} </Text> : null}
             <Text style={{ color: revealed ? colors.goldLight : colors.cream, fontFamily: fonts.cormorant }}>
               {revealed ? text : clozeText(text)}
@@ -411,14 +422,14 @@ export default function PsalmsScreen() {
         <View style={styles.sessionFoot}>
           {!revealed ? (
             <TouchableOpacity style={styles.revealBtn} onPress={() => setRevealed(true)}>
-              <Text style={styles.revealBtnText}>Reveal & check</Text>
+              <Text style={styles.revealBtnText}>{T.session.revealCheck}</Text>
             </TouchableOpacity>
           ) : (
             <View style={[styles.gradeRow, busy && { opacity: 0.5 }]} pointerEvents={busy ? 'none' : 'auto'}>
-              <GradeBtn label="Wrong" sub="again today"             color={colors.red}   onPress={() => gradePortion('again')} />
-              <GradeBtn label="Hard"  sub={whenNext(after('hard'))} color="#C4821A"      onPress={() => gradePortion('hard')} />
-              <GradeBtn label="Good"  sub={whenNext(after('good'))} color={colors.green} onPress={() => gradePortion('good')} />
-              <GradeBtn label="Easy"  sub={whenNext(after('easy'))} color={colors.blue}  onPress={() => gradePortion('easy')} />
+              <GradeBtn label={T.session.wrong} sub={T.session.againToday}    color={colors.red}   onPress={() => gradePortion('again')} />
+              <GradeBtn label={T.session.hard}  sub={whenNext(after('hard'))} color="#C4821A"      onPress={() => gradePortion('hard')} />
+              <GradeBtn label={T.session.good}  sub={whenNext(after('good'))} color={colors.green} onPress={() => gradePortion('good')} />
+              <GradeBtn label={T.session.easy}  sub={whenNext(after('easy'))} color={colors.blue}  onPress={() => gradePortion('easy')} />
             </View>
           )}
         </View>
@@ -430,18 +441,18 @@ export default function PsalmsScreen() {
   if (view === 'manage') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Choose Passages" backLabel="Done" onBack={() => setView('overview')} />
+        <Header title={T.manage.title} backLabel={S.common.done} onBack={() => setView('overview')} />
         <ScrollView contentContainerStyle={{ padding: SP.lg, paddingBottom: 40 }}>
-          <Text style={styles.sectionLabel}>My passages · in order</Text>
+          <Text style={styles.sectionLabel}>{T.manage.myPassagesOrdered}</Text>
           {selection.length === 0 && (
-            <Text style={styles.muted}>None chosen yet — add from the hours below.</Text>
+            <Text style={styles.muted}>{T.manage.noneChosen}</Text>
           )}
           {selection.map((item, i) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowNum}>{i + 1}</Text>
               <TouchableOpacity style={{ flex: 1 }} onPress={() => setReader(item)}>
                 <Text style={styles.rowTitle}>{itemLabel(item)}</Text>
-                <Text style={styles.rowSub}>{itemUnitCount(item)} portion{itemUnitCount(item) > 1 ? 's' : ''}</Text>
+                <Text style={styles.rowSub}>{plural(T.manage.portions, itemUnitCount(item))}</Text>
               </TouchableOpacity>
               <CategoryTag item={item} />
               <View style={styles.arrows}>
@@ -454,7 +465,7 @@ export default function PsalmsScreen() {
 
           {HOUR_LAYOUTS.map(hour => (
             <View key={hour.key}>
-              <Text style={[styles.sectionLabel, { marginTop: SP.lg }]}>{hour.name}</Text>
+              <Text style={[styles.sectionLabel, { marginTop: SP.lg }]}>{hourName(hour.key)}</Text>
               {hour.sections.map((sec, si) => {
                 const items = [
                   ...(sec.psalms ?? []).flatMap(itemsForPsalm),
@@ -462,7 +473,7 @@ export default function PsalmsScreen() {
                 ];
                 return (
                   <View key={si}>
-                    {sec.heading != null && <Text style={styles.watchLabel}>{sec.heading}</Text>}
+                    {sec.heading != null && <Text style={styles.watchLabel}>{sectionHeading(sec.heading)}</Text>}
                     {items.map(item => {
                       const on = selection.includes(item);
                       return (
@@ -470,7 +481,7 @@ export default function PsalmsScreen() {
                           <Text style={[styles.addPlus, { color: on ? colors.green : colors.gold }]}>{on ? '✓' : '+'}</Text>
                           <TouchableOpacity style={{ flex: 1 }} onPress={() => setReader(item)}>
                             <Text style={styles.rowTitle}>{itemLabel(item)}</Text>
-                            <Text style={styles.rowSub}>{itemUnitCount(item)} portion{itemUnitCount(item) > 1 ? 's' : ''}</Text>
+                            <Text style={styles.rowSub}>{plural(T.manage.portions, itemUnitCount(item))}</Text>
                           </TouchableOpacity>
                           <CategoryTag item={item} />
                         </TouchableOpacity>
@@ -497,60 +508,57 @@ export default function PsalmsScreen() {
       <ScrollView contentContainerStyle={{ padding: SP.lg, paddingBottom: 32 }}>
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>Psalms</Text>
+          <Text style={styles.pageTitle}>{T.title}</Text>
         </View>
-        <Text style={styles.pageSubtitle}>Hide the Agpeya in your heart</Text>
+        <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
         {reviewedCount > 0 && (
           <View style={styles.doneBanner}>
             <Text style={styles.doneBannerText}>
-              ✦  Reviewed {reviewedCount} {reviewedCount === 1 ? 'passage' : 'passages'} — glory to God.
+              {plural(T.overview.reviewed, reviewedCount)}
             </Text>
           </View>
         )}
 
         {selection.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Memorize the Agpeya</Text>
+            <Text style={styles.emptyTitle}>{T.overview.emptyTitle}</Text>
             <Text style={styles.emptyText}>
-              Choose psalms and prayers from the canonical hours to hide in your heart — each hour's Gospel,
-              litanies, and absolution, the fixed prayers of the First Hour, the three watches of Midnight,
-              and the Prayer of the Veil. Spaced repetition brings each passage back just as you're about to
-              forget it.
+              {T.overview.emptyText}
             </Text>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => setView('manage')}>
-              <Text style={styles.primaryBtnText}>Choose passages</Text>
+              <Text style={styles.primaryBtnText}>{T.overview.choosePassages}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <View style={styles.hero}>
-              <Text style={styles.heroLabel}>MEMORIZE THE AGPEYA</Text>
-              <Text style={styles.heroBig}>{stats.mastered} <Text style={styles.heroOf}>/ {stats.totalParts} portions mature</Text></Text>
+              <Text style={styles.heroLabel}>{T.overview.heroLabel}</Text>
+              <Text style={styles.heroBig}>{stats.mastered} <Text style={styles.heroOf}>{fmt(T.overview.heroOf, { total: stats.totalParts })}</Text></Text>
               <View style={styles.heroBarTrack}><View style={[styles.heroBarFill, { width: `${masteredPct}%` }]} /></View>
               {streak.current > 0 && (
                 <View style={styles.streakRow}>
-                  <Text style={styles.heroStreak}>🔥  {streak.current}-day streak</Text>
+                  <Text style={styles.heroStreak}>{plural(T.overview.streak, streak.current)}</Text>
                   {streak.longest > streak.current && (
-                    <Text style={styles.heroStreakBest}>Best: {streak.longest}</Text>
+                    <Text style={styles.heroStreakBest}>{fmt(T.overview.streakBest, { n: streak.longest })}</Text>
                   )}
-                  {freezeReady && <Text style={styles.freezeTag}>🧊 freeze ready</Text>}
+                  {freezeReady && <Text style={styles.freezeTag}>{T.overview.freezeReady}</Text>}
                 </View>
               )}
             </View>
 
             <View style={styles.statRow}>
-              <Stat label="New" value={stats.newCount} color={colors.textSecond} />
-              <Stat label="Learning" value={stats.learning} color={colors.yellow} />
+              <Stat label={T.overview.statNew} value={stats.newCount} color={colors.textSecond} />
+              <Stat label={T.overview.statLearning} value={stats.learning} color={colors.yellow} />
               {/* Whole psalms/passages with every portion mature — a psalm only
                   counts as memorized when ALL of it is. Portion-level progress
                   lives in the hero bar above. */}
-              <Stat label="Memorized" value={stats.itemsMemorized} color={colors.green} />
+              <Stat label={T.overview.statMemorized} value={stats.itemsMemorized} color={colors.green} />
             </View>
 
             {dueCount === 0 && newAvailable === 0 ? (
               <View style={styles.caughtUp}>
-                <Text style={styles.caughtUpText}>All caught up for today ✦</Text>
+                <Text style={styles.caughtUpText}>{T.overview.caughtUp}</Text>
               </View>
             ) : (
               <View style={styles.actionRow}>
@@ -559,27 +567,27 @@ export default function PsalmsScreen() {
                   onPress={() => startSession('review')}
                   disabled={dueCount === 0}
                 >
-                  <Text style={[styles.actionBtnText, { color: dueCount ? colors.navy : colors.muted }]}>Review {dueCount}</Text>
-                  <Text style={[styles.actionBtnSub, { color: dueCount ? colors.navy : colors.muted, opacity: dueCount ? 0.75 : 1 }]}>due today</Text>
+                  <Text style={[styles.actionBtnText, { color: dueCount ? colors.navy : colors.muted }]}>{fmt(T.overview.review, { n: dueCount })}</Text>
+                  <Text style={[styles.actionBtnSub, { color: dueCount ? colors.navy : colors.muted, opacity: dueCount ? 0.75 : 1 }]}>{T.overview.reviewSub}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: newAvailable ? colors.green : colors.panel }]}
                   onPress={() => startSession('new')}
                   disabled={newAvailable === 0}
                 >
-                  <Text style={[styles.actionBtnText, { color: newAvailable ? colors.navy : colors.muted }]}>Learn {newAvailable}</Text>
-                  <Text style={[styles.actionBtnSub, { color: newAvailable ? colors.navy : colors.muted, opacity: newAvailable ? 0.75 : 1 }]}>new</Text>
+                  <Text style={[styles.actionBtnText, { color: newAvailable ? colors.navy : colors.muted }]}>{fmt(T.overview.learn, { n: newAvailable })}</Text>
+                  <Text style={[styles.actionBtnSub, { color: newAvailable ? colors.navy : colors.muted, opacity: newAvailable ? 0.75 : 1 }]}>{T.overview.learnSub}</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <Text style={[styles.sectionLabel, { marginBottom: SP.xs }]}>Number of new cards per day</Text>
+            <Text style={[styles.sectionLabel, { marginBottom: SP.xs }]}>{T.overview.newPerDay}</Text>
             <NumberPicker value={newPerDay} onScrub={setNewPerDay} onCommit={changeNewPerDay} min={1} max={100} />
             <View style={{ marginBottom: SP.lg }} />
 
             <View style={styles.listHead}>
-              <Text style={styles.sectionLabel}>My passages</Text>
-              <TouchableOpacity onPress={() => setView('manage')}><Text style={styles.linkGold}>Manage</Text></TouchableOpacity>
+              <Text style={styles.sectionLabel}>{T.overview.myPassages}</Text>
+              <TouchableOpacity onPress={() => setView('manage')}><Text style={styles.linkGold}>{T.overview.manage}</Text></TouchableOpacity>
             </View>
 
             {selection.map(item => {
@@ -588,10 +596,10 @@ export default function PsalmsScreen() {
               const hasStarted = Array.from({ length: total }).some((_, i) => cards[cardId(item, i)]);
               const sub =
                 st === 'learning'
-                  ? (item === lp ? `Learning now · ${mature}/${total} portions` : !hasStarted ? 'Up next — finish earlier passages first' : `${mature}/${total} portions memorized`)
-                : st === 'ready'   ? 'All portions mature — recite it in Review'
-                : st === 'retest'  ? 'Whole-passage recitation due in Review'
-                : '✓ Memorized — recited in full';
+                  ? (item === lp ? plural(T.overview.learningNow, total, { mature }) : !hasStarted ? T.overview.upNext : plural(T.overview.portionsMemorized, total, { mature }))
+                : st === 'ready'   ? T.overview.readyToRecite
+                : st === 'retest'  ? T.overview.reciteDue
+                : T.overview.memorized;
               const subColor =
                 st === 'memorized' ? colors.green
                 : st === 'retest'  ? colors.yellow
@@ -605,7 +613,7 @@ export default function PsalmsScreen() {
                     <Text style={[styles.rowSub, { color: subColor }]}>{sub}</Text>
                   </TouchableOpacity>
                   {st === 'ready' || st === 'retest' ? (
-                    <View style={styles.reciteTag}><Text style={styles.reciteTagText}>Recite</Text></View>
+                    <View style={styles.reciteTag}><Text style={styles.reciteTagText}>{T.overview.recite}</Text></View>
                   ) : st === 'memorized' ? (
                     <Text style={styles.crown}>✓</Text>
                   ) : (
@@ -615,14 +623,14 @@ export default function PsalmsScreen() {
               );
             })}
 
-            <Text style={[styles.sectionLabel, { marginTop: SP.lg, marginBottom: SP.sm }]}>Milestones</Text>
+            <Text style={[styles.sectionLabel, { marginTop: SP.lg, marginBottom: SP.sm }]}>{T.overview.milestones}</Text>
             <View style={styles.badgeGrid}>
               {badges.map(b => (
                 <View key={b.id} style={[styles.badgeCard, !b.earned && styles.badgeCardLocked]}>
                   <Text style={[styles.badgeIcon, !b.earned && styles.badgeIconLocked]}>{b.icon}</Text>
                   <Text style={[styles.badgeLabel, !b.earned && styles.badgeLabelLocked]}>{b.label}</Text>
                   <Text style={styles.badgeDesc}>
-                    {b.earned || !b.progress ? b.description : `${b.progress.current} / ${b.progress.target}`}
+                    {b.earned || !b.progress ? b.description : fmt(T.progressOf, { n: b.progress.current, total: b.progress.target })}
                   </Text>
                 </View>
               ))}
@@ -632,18 +640,16 @@ export default function PsalmsScreen() {
             {hasClass && (
               <>
                 <Text style={[styles.sectionLabel, { marginTop: SP.lg, marginBottom: SP.sm }]}>
-                  {isServant ? 'Your Class' : 'Class Leaderboard'}
+                  {isServant ? T.leaderboard.yourClass : T.leaderboard.classLeaderboard}
                 </Text>
 
                 {!optedIn && !isServant ? (
                   // The ask, stated plainly. It names exactly who would see what,
                   // because "join the leaderboard" hides the only fact that matters.
                   <View style={styles.lbOptIn}>
-                    <Text style={styles.lbOptInTitle}>Compare with your class?</Text>
+                    <Text style={styles.lbOptInTitle}>{T.leaderboard.optInTitle}</Text>
                     <Text style={styles.lbOptInBody}>
-                      Your streak and how many psalms you've memorized would be visible to the
-                      others in your class, and to your servant. Your psalm selection, your canon
-                      and everything else stay private. You can turn this off whenever you like.
+                      {T.leaderboard.optInBody}
                     </Text>
                     <TouchableOpacity
                       style={[styles.lbJoinBtn, boardBusy && { opacity: 0.5 }]}
@@ -651,14 +657,14 @@ export default function PsalmsScreen() {
                       onPress={() => toggleLeaderboard(true)}
                       activeOpacity={0.85}
                     >
-                      <Text style={styles.lbJoinText}>{boardBusy ? 'Joining…' : 'Join the leaderboard'}</Text>
+                      <Text style={styles.lbJoinText}>{boardBusy ? T.leaderboard.joining : T.leaderboard.join}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : board.length === 0 ? (
                   <Text style={styles.lbEmpty}>
                     {isServant
-                      ? 'No one in your class has joined the leaderboard yet.'
-                      : "You're the first in your class to join — others will appear as they do."}
+                      ? T.leaderboard.emptyServant
+                      : T.leaderboard.emptyFirst}
                   </Text>
                 ) : (
                   <View>
@@ -666,9 +672,9 @@ export default function PsalmsScreen() {
                       <View key={r.user_id} style={[styles.lbRow, r.is_self && styles.lbRowSelf]}>
                         <Text style={[styles.lbRank, r.is_self && styles.lbSelfText]}>{i + 1}</Text>
                         <Text style={[styles.lbName, r.is_self && styles.lbSelfText]} numberOfLines={1}>
-                          {r.is_self ? 'You' : r.display_name}
+                          {r.is_self ? T.leaderboard.you : r.display_name}
                         </Text>
-                        <Text style={styles.lbStat}>{r.mastered} memorized</Text>
+                        <Text style={styles.lbStat}>{fmt(T.leaderboard.memorized, { n: r.mastered })}</Text>
                         <Text style={[styles.lbStreak, r.is_self && styles.lbSelfText]}>🔥 {r.streak}</Text>
                       </View>
                     ))}
@@ -677,7 +683,7 @@ export default function PsalmsScreen() {
 
                 {optedIn && !isServant && (
                   <TouchableOpacity onPress={() => toggleLeaderboard(false)} disabled={boardBusy}>
-                    <Text style={styles.lbLeave}>Leave the leaderboard</Text>
+                    <Text style={styles.lbLeave}>{T.leaderboard.leave}</Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -778,6 +784,8 @@ const styles = lazyThemed(() => StyleSheet.create({
   selBtnText:  { fontFamily: fonts.latoBold, fontSize: 14 },
   partLabel:   { fontFamily: fonts.latoBold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 },
   psalmText:   { fontFamily: fonts.cormorant, fontSize: 18, lineHeight: 30, color: colors.cream },
+  // Shown above Agpeya text while the app is in another language.
+  scriptureNote: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted },
 
   sessionTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SP.lg, paddingTop: SP.md },
   sessionProgress:{ fontFamily: fonts.latoBold, fontSize: 13, color: colors.muted },

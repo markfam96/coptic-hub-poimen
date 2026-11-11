@@ -13,6 +13,11 @@ import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
 import { clergyDisplayName } from '@/lib/names';
+import { S, fmt, plural, fmtDate, GLYPH } from '@/lib/i18n';
+
+const T = S.priest.flock;
+const SHARED = S.priest.shared;
+const DEMO = S.priest.demo;
 
 type FilterType = 'all' | 'due' | 'overdue' | 'flagged';
 type StatusType = 'recent' | 'due' | 'overdue';
@@ -33,12 +38,12 @@ interface FlockMember {
 }
 
 const FLOCK_DEMO: FlockMember[] = [
-  { id: 'demo-mh', initials: 'MH', name: 'Michael Hanna', stage: 'Growing', daysSince: 47, canonPct: 50, flagged: false, visitRequested: false, status: 'due', note: 'New father — pastoral visit completed May 4.' },
-  { id: 'demo-sg', initials: 'SG', name: 'Sara Girgis', stage: 'Mature', daysSince: 18, canonPct: 88, flagged: false, visitRequested: false, status: 'recent', note: '' },
-  { id: 'demo-pb', initials: 'PB', name: 'Peter Botros', stage: 'New', daysSince: 74, canonPct: 20, flagged: true, visitRequested: false, status: 'overdue', note: 'Flagged: missed two follow-up appointments.' },
-  { id: 'demo-mm', initials: 'MM', name: 'Mary Mikhail', stage: 'Growing', daysSince: 29, canonPct: 65, flagged: false, visitRequested: false, status: 'recent', note: '' },
-  { id: 'demo-ag', initials: 'AG', name: 'Andrew George', stage: 'Seeking', daysSince: 92, canonPct: 0, flagged: true, visitRequested: false, status: 'overdue', note: 'New to the church — needs initial meeting.' },
-  { id: 'demo-cn', initials: 'CN', name: 'Christine Naguib', stage: 'Multiplying', daysSince: 35, canonPct: 92, flagged: false, visitRequested: false, status: 'due', note: '' },
+  { id: 'demo-mh', initials: DEMO.initials.mh, name: DEMO.names.mh, stage: DEMO.stages.growing, daysSince: 47, canonPct: 50, flagged: false, visitRequested: false, status: 'due', note: DEMO.flockNotes.mh },
+  { id: 'demo-sg', initials: DEMO.initials.sg, name: DEMO.names.sg, stage: DEMO.stages.mature, daysSince: 18, canonPct: 88, flagged: false, visitRequested: false, status: 'recent', note: '' },
+  { id: 'demo-pb', initials: DEMO.initials.pb, name: DEMO.names.pb, stage: DEMO.stages.new, daysSince: 74, canonPct: 20, flagged: true, visitRequested: false, status: 'overdue', note: DEMO.flockNotes.pb },
+  { id: 'demo-mm', initials: DEMO.initials.mm, name: DEMO.names.mm, stage: DEMO.stages.growing, daysSince: 29, canonPct: 65, flagged: false, visitRequested: false, status: 'recent', note: '' },
+  { id: 'demo-ag', initials: DEMO.initials.ag, name: DEMO.names.ag, stage: DEMO.stages.seeking, daysSince: 92, canonPct: 0, flagged: true, visitRequested: false, status: 'overdue', note: DEMO.flockNotes.ag },
+  { id: 'demo-cn', initials: DEMO.initials.cn, name: DEMO.names.cn, stage: DEMO.stages.multiplying, daysSince: 35, canonPct: 92, flagged: false, visitRequested: false, status: 'due', note: '' },
 ];
 
 const STATUS_COLOR: Record<StatusType, string> = lazyThemed(() => ({
@@ -47,17 +52,13 @@ const STATUS_COLOR: Record<StatusType, string> = lazyThemed(() => ({
   overdue: colors.red,
 }));
 
-const STATUS_LABEL: Record<StatusType, string> = {
-  recent: '✓ Recent',
-  due: '⚠ Due',
-  overdue: '⚠ Overdue',
-};
+const STATUS_LABEL: Record<StatusType, string> = T.status;
 
 const FILTER_OPTS: { value: FilterType; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'due', label: 'Due' },
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'flagged', label: 'Flagged' },
+  { value: 'all', label: T.filters.all },
+  { value: 'due', label: T.filters.due },
+  { value: 'overdue', label: T.filters.overdue },
+  { value: 'flagged', label: T.filters.flagged },
 ];
 
 export default function FlockScreen() {
@@ -71,7 +72,7 @@ export default function FlockScreen() {
   const [loading, setLoading] = useState(!demoMode);
   const [contextMember, setContextMember] = useState<FlockMember | null>(null);
 
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const today = fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric' });
   const greeting = clergyDisplayName(profile?.full_name);
 
   // Reload on focus (not just mount) so changes made in the member detail —
@@ -118,7 +119,7 @@ export default function FlockScreen() {
         daysSince < 60 ? 'due' : 'overdue';
       const parts = (p.full_name ?? '?').split(' ');
       const initials = (parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '');
-      return { id: p.id, initials: initials.toUpperCase(), name: p.full_name ?? 'Unknown', stage: '', daysSince, canonPct: null, flagged: false, visitRequested: !!visitReqs[p.id], status, note: '', avatarUrl: p.avatar_url ?? myPhotos[p.id] ?? null };
+      return { id: p.id, initials: initials.toUpperCase(), name: p.full_name ?? SHARED.unknownMember, stage: '', daysSince, canonPct: null, flagged: false, visitRequested: !!visitReqs[p.id], status, note: '', avatarUrl: p.avatar_url ?? myPhotos[p.id] ?? null };
     });
 
     setMembers(mapped);
@@ -150,24 +151,26 @@ export default function FlockScreen() {
               <Text style={styles.menuBtnText}>☰</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={styles.pageTitle}>My Flock</Text>
-              <Text style={styles.pageSubtitle}>{today} · {greeting}</Text>
+              <Text style={styles.pageTitle}>{SHARED.myFlock}</Text>
+              <Text style={styles.pageSubtitle}>{fmt(T.subtitle, { date: today, name: greeting })}</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.switchBtn} onPress={() => router.push('/(tabs)')}>
-            <Text style={styles.switchBtnText}>MY VIEW</Text>
+            <Text style={styles.switchBtnText}>{T.myView}</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.flockMeta}>
-          {members.length} member{members.length !== 1 ? 's' : ''}
-          {overdue > 0 ? ` · ${overdue} overdue` : ''}
-          {visitRequests > 0 ? ` · ${visitRequests} visit request${visitRequests !== 1 ? 's' : ''}` : ''}
+          {[
+            plural(T.memberCount, members.length),
+            overdue > 0 ? fmt(T.overdueCount, { n: overdue }) : '',
+            visitRequests > 0 ? plural(T.visitRequestCount, visitRequests) : '',
+          ].filter(Boolean).join(SHARED.dot)}
         </Text>
 
         <TextInput
           style={styles.search}
-          placeholder="Search members..."
+          placeholder={T.searchPlaceholder}
           placeholderTextColor={colors.faint}
           value={search}
           onChangeText={setSearch}
@@ -188,13 +191,13 @@ export default function FlockScreen() {
           ))}
         </View>
 
-        <Card title={`Members (${filtered.length})`} flat>
+        <Card title={fmt(T.listTitle, { n: filtered.length })} flat>
           {loading ? (
             <ActivityIndicator color={colors.gold} style={{ paddingVertical: 20 }} />
           ) : filtered.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>{members.length === 0 ? 'No spiritual children yet' : 'No members match this filter'}</Text>
-              <Text style={styles.emptyBody}>{members.length === 0 ? 'Members who list you as their Father of Confession will appear here.' : 'Try a different filter.'}</Text>
+              <Text style={styles.emptyTitle}>{members.length === 0 ? T.emptyTitle : T.noMatchTitle}</Text>
+              <Text style={styles.emptyBody}>{members.length === 0 ? T.emptyBody : T.noMatchBody}</Text>
             </View>
           ) : (
             filtered.map((member, i) => (
@@ -218,8 +221,8 @@ export default function FlockScreen() {
                   <View style={styles.memberMeta}>
                     <CrossIcon size={12} color={colors.muted} />
                     {member.daysSince !== null
-                      ? <Text style={styles.metaItem}>{member.daysSince}d ago</Text>
-                      : <Text style={styles.metaItem}>No record</Text>
+                      ? <Text style={styles.metaItem}>{plural(T.daysAgo, member.daysSince)}</Text>
+                      : <Text style={styles.metaItem}>{T.noRecord}</Text>
                     }
                     {member.stage ? (
                       <>
@@ -231,16 +234,16 @@ export default function FlockScreen() {
                   {member.note ? <Text style={styles.memberNote}>{member.note}</Text> : null}
                   {member.visitRequested && (
                     <View style={styles.visitBadge}>
-                      <Text style={styles.visitBadgeText}>◎ Requested a pastoral visit</Text>
+                      <Text style={styles.visitBadgeText}>{SHARED.visitRequested}</Text>
                     </View>
                   )}
                   {member.flagged && (
                     <View style={styles.flagBadge}>
-                      <Text style={styles.flagBadgeText}>⚑ Flagged for follow-up</Text>
+                      <Text style={styles.flagBadgeText}>{T.flagged}</Text>
                     </View>
                   )}
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.chevron}>{GLYPH.forward}</Text>
               </TouchableOpacity>
             ))
           )}
@@ -262,8 +265,10 @@ export default function FlockScreen() {
               <>
                 <Text style={ctx.memberName}>{contextMember.name}</Text>
                 <Text style={ctx.memberMeta}>
-                  {contextMember.daysSince !== null ? `${contextMember.daysSince}d since confession` : 'No confession on record'}
-                  {contextMember.stage ? ` · ${contextMember.stage}` : ''}
+                  {[
+                    contextMember.daysSince !== null ? plural(T.sheetDaysSince, contextMember.daysSince) : T.sheetNoConfession,
+                    contextMember.stage,
+                  ].filter(Boolean).join(SHARED.dot)}
                 </Text>
                 <View style={ctx.divider} />
                 <TouchableOpacity style={ctx.action} onPress={() => {
@@ -273,28 +278,28 @@ export default function FlockScreen() {
                   router.push({ pathname: '/(priest)/log-encounter', params: { memberId: contextMember.id, memberName: contextMember.name } });
                 }}>
                   <View style={ctx.actionIcon}><CrossIcon size={18} color={colors.gold} /></View>
-                  <Text style={ctx.actionLabel}>Log Encounter</Text>
-                  <Text style={ctx.actionChevron}>›</Text>
+                  <Text style={ctx.actionLabel}>{T.logEncounter}</Text>
+                  <Text style={ctx.actionChevron}>{GLYPH.forward}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={ctx.action} onPress={() => {
                   H.tap(); setContextMember(null);
                   router.push({ pathname: '/(priest)/assign-canon', params: { memberId: contextMember.id, memberName: contextMember.name } });
                 }}>
                   <View style={ctx.actionIcon}><CandleIcon size={18} color={colors.gold} /></View>
-                  <Text style={ctx.actionLabel}>Assign Canon</Text>
-                  <Text style={ctx.actionChevron}>›</Text>
+                  <Text style={ctx.actionLabel}>{T.assignCanon}</Text>
+                  <Text style={ctx.actionChevron}>{GLYPH.forward}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={ctx.action} onPress={() => {
                   H.tap(); setContextMember(null);
                   router.push({ pathname: '/(priest)/member', params: { id: contextMember.id, name: contextMember.name } });
                 }}>
                   <View style={ctx.actionIcon}><PersonIcon size={18} color={colors.gold} /></View>
-                  <Text style={ctx.actionLabel}>View Profile</Text>
-                  <Text style={ctx.actionChevron}>›</Text>
+                  <Text style={ctx.actionLabel}>{T.viewProfile}</Text>
+                  <Text style={ctx.actionChevron}>{GLYPH.forward}</Text>
                 </TouchableOpacity>
                 <View style={ctx.divider} />
                 <TouchableOpacity style={ctx.cancelBtn} onPress={() => setContextMember(null)}>
-                  <Text style={ctx.cancelText}>Cancel</Text>
+                  <Text style={ctx.cancelText}>{S.common.cancel}</Text>
                 </TouchableOpacity>
               </>
             )}
