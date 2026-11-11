@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import * as db from './db';
-import type { AuthSession, AuthUser, Profile, SignupRole } from './db';
+import type { AuthSession, AuthUser, Profile, SignupRole, SignupChurch } from './db';
 
 // Supabase appends tokens as a URL fragment (#access_token=...&type=...) on
 // the emailRedirectTo link — not query params — so this can't use the
@@ -41,7 +41,7 @@ type AuthContextType = {
   pinAction: PINAction;
   refreshProfile: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUpWithEmail: (email: string, password: string, fullName: string, requestedRole?: SignupRole) => Promise<{ error: string | null }>;
+  signUpWithEmail: (email: string, password: string, fullName: string, requestedRole?: SignupRole, church?: SignupChurch) => Promise<{ error: string | null }>;
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -215,8 +215,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return db.signInWithPassword(email, password);
   }
 
-  async function signUpWithEmail(email: string, password: string, fullName: string, requestedRole: SignupRole = 'congregant') {
-    return db.signUp(email, password, fullName, requestedRole, Linking.createURL('auth-callback'));
+  async function signUpWithEmail(email: string, password: string, fullName: string, requestedRole: SignupRole = 'congregant', church?: SignupChurch) {
+    return db.signUp(email, password, fullName, requestedRole, Linking.createURL('auth-callback'), church);
   }
 
   async function signInWithMagicLink(email: string) {

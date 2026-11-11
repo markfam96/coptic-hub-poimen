@@ -29,7 +29,7 @@ export default function PrivacyScreen() {
         <Section title="Information We Collect">
           <Body>We collect only what is necessary to provide the app's features:</Body>
           <Bullet>Name, email address, and role (congregant, servant, or priest) provided during registration.</Bullet>
-          <Bullet>Church affiliation and Father of Confession (FOC) linkage, set by you in the app.</Bullet>
+          <Bullet>Church affiliation (chosen from a list imported from the Coptic Orthodox Directory, or typed by you) and Father of Confession (FOC) linkage, set by you in the app.</Bullet>
           <Bullet>Spiritual wellness data (prayer frequency, fasting, scripture reading) that you choose to share with your FOC. This sharing requires your explicit consent and can be revoked at any time.</Bullet>
           <Bullet>Prayer requests you submit. The body of each prayer request is end-to-end encrypted — only you and your designated recipients can read the content. The server stores only ciphertext.</Bullet>
           <Bullet>Pastoral and encounter notes written by your priest or servant about you. These are end-to-end encrypted on their device before being stored, and restricted so only their author can open them. We hold only ciphertext and cannot read them.</Bullet>
@@ -42,6 +42,7 @@ export default function PrivacyScreen() {
         </Section>
 
         <Section title="What We Don't Collect">
+          <Bullet>Your location. If you tap "Sort by nearest" in the church picker, your device's location is used on the device to order the list and show how far each church is. It is not sent to us or to anyone, and it is not stored.</Bullet>
           <Bullet>Reminders about your canon and your psalms are written by your phone, not sent to it. Your rule, your review queue and your streak are read from the device to write them and none of that leaves it. Notifications from our servers are a separate thing you switch on yourself, and they are about events your phone cannot know — an appointment your father confirmed while the app was closed.</Bullet>
           <Bullet>Which parts of your canon you kept or missed. Only daily totals are sent, and only if you turn the canon reminder on. Your Father of Confession sees the same wellness percentages as before; the daily counts are used to schedule a reminder and are not shown to anyone.</Bullet>
           <Bullet>Your confession journal and examination of conscience stay on your device. They are encrypted before being written to local storage and are never sent to our servers, so we never receive or store their content. The key that opens them is your own keypair; we hold only a copy of it that your PIN unlocks, and your PIN never reaches us.</Bullet>

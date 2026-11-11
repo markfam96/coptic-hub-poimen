@@ -19,6 +19,9 @@ export interface Profile {
   psalm_leaderboard_consent: boolean | null;
   last_confession_at: string | null;
   last_seen_at: string | null;
+  // Read by the Home church prompt: a member who typed an unlisted church at
+  // sign-up is not asked on their first open whether it is in the directory.
+  created_at: string | null;
 }
 
 export interface Church {
@@ -38,27 +41,38 @@ export interface Church {
   latitude: number | null;
   longitude: number | null;
   created_at: string;
+  // Monasteries are in the list because monastics and some faithful belong to
+  // one; their names already say so, so nothing in the UI tags them.
+  kind: 'church' | 'monastery';
+  // The directory's local name ("Bahtim", "Darb El-Eid") — how members tell
+  // two "St. Mary Coptic Orthodox Church" rows apart.
+  nickname: string | null;
+  // How exact the coordinates are. city/state rows are centroids and the
+  // picker marks their distance as approximate.
+  geo_precision: 'address' | 'street' | 'city' | 'state' | null;
+  // 'nihov' rows are owned by the Coptic Orthodox Directory import and are
+  // overwritten on refresh; 'manual' rows are admin-entered and never touched.
+  source: string;
+  source_id: string | null;
+  // Soft hide, set by hand. profiles.church_id is ON DELETE SET NULL, so a
+  // hard delete would silently un-church members; a hidden row keeps them.
+  hidden_at: string | null;
 }
 
+// One literal, not a concatenation: supabase-js types the rows by parsing
+// this string, and a computed string would leave them untyped.
 const CHURCH_COLS =
-  'id, name, address, address_line1, address_line2, city, state, zip, country, latitude, longitude, created_at';
+  'id, name, address, address_line1, address_line2, city, state, zip, country, latitude, longitude, created_at, kind, nickname, geo_precision, source, source_id, hidden_at';
 
-// One line per address, whichever shape the row is in. Structured fields win;
-// a row that predates them falls back to its free text. Used for display and
-// for the picker's search, so what you see is what you can search on.
-export function formatChurchAddress(c: Partial<Church> | null | undefined): string {
-  if (!c) return '';
-  const street = [c.address_line1, c.address_line2].filter(Boolean).join(', ');
-  const locality = [c.city, c.state, c.zip].filter(Boolean).join(', ');
-  const structured = [street, locality, c.country && c.country !== 'US' ? c.country : null]
-    .filter(Boolean).join(' · ');
-  return structured || (c.address ?? '');
-}
+// Display lives in lib/church-display.ts (import-free, so its tests run the
+// real function). Re-exported here because app/profile.tsx and the lib/db
+// barrel already import it from this module.
+export { formatChurchAddress } from '../church-display';
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, church_name, church_id, role, requested_role, avatar_url, foc_id, servant_id, foc_consent_at, invite_code, vitals_consent, psalm_leaderboard_consent, last_confession_at, last_seen_at')
+    .select('id, full_name, church_name, church_id, role, requested_role, avatar_url, foc_id, servant_id, foc_consent_at, invite_code, vitals_consent, psalm_leaderboard_consent, last_confession_at, last_seen_at, created_at')
     .eq('id', userId)
     .single();
   return data ?? null;
@@ -71,12 +85,46 @@ export async function touchLastSeen(userId: string): Promise<void> {
     .eq('id', userId);
 }
 
+// Every visible church, for the picker. PostgREST caps a response at 1,000
+// rows and says nothing when it does — with ~1,150 rows the tail from
+// mid-"St. Paul" onward would simply be missing — so this pages until a
+// short page comes back (the getAllFeedback pattern). The id tiebreak matters:
+// a hundred rows are literally "St. Mary Coptic Orthodox Church" and straddle
+// page boundaries, so ordering by name alone could repeat or skip one.
+//
+// Throws on a failed page rather than returning a partial list: the picker
+// treats an empty list and a failed load differently (a failed load opens
+// the "isn't listed" form), and a half list would look complete.
+const CHURCH_PAGE = 1000;
+
 export async function getChurches(): Promise<Church[]> {
-  const { data } = await supabase
-    .from('churches')
-    .select(CHURCH_COLS)
-    .order('name');
-  return data ?? [];
+  const all: Church[] = [];
+  let expected: number | null = null;
+  // Advances by what actually came back, not by the page size: a project
+  // "Max rows" below 1,000 shortens every page, and stepping by 1,000 would
+  // skip the rest of each one.
+  for (let from = 0; ; ) {
+    const { data, error, count } = await supabase
+      .from('churches')
+      .select(CHURCH_COLS, from === 0 ? { count: 'exact' } : undefined)
+      .is('hidden_at', null)
+      .order('name')
+      .order('id')
+      .range(from, from + CHURCH_PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (from === 0) expected = count ?? null;
+    const got = data ?? [];
+    all.push(...got);
+    from += got.length;
+    if (got.length === 0) break;
+    if (expected != null ? all.length >= expected : got.length < CHURCH_PAGE) break;
+  }
+  // The count check is the only thing that would catch a silent cap coming
+  // back (a lower project "Max rows", a changed page size).
+  if (__DEV__ && expected != null && expected !== all.length) {
+    console.warn(`getChurches: server counts ${expected} visible churches, received ${all.length}`);
+  }
+  return all;
 }
 
 // RLS restricts inserts to admins (is_admin()); a non-admin caller gets
@@ -249,7 +297,7 @@ export async function getKeyBackup(_userId: string): Promise<string | null> {
 export async function getAllProfiles(): Promise<Profile[]> {
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, church_name, church_id, role, requested_role, avatar_url, foc_id, servant_id, foc_consent_at, invite_code, vitals_consent, psalm_leaderboard_consent, last_confession_at, last_seen_at')
+    .select('id, full_name, church_name, church_id, role, requested_role, avatar_url, foc_id, servant_id, foc_consent_at, invite_code, vitals_consent, psalm_leaderboard_consent, last_confession_at, last_seen_at, created_at')
     .order('role')
     .order('full_name');
   return data ?? [];

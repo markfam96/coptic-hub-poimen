@@ -35,6 +35,8 @@ import { firstGivenName, clergyDisplayName } from '@/lib/names';
 import Harp from '@/components/ui/Harp';
 import { CrossIcon, CandleIcon } from '@/components/ui/TabIcons';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
+import { churchPromptVariant } from '@/lib/church-prompt';
+import { loadChurchPromptDismissed, dismissChurchPrompt } from '@/lib/church-prompt-store';
 
 const { width: SW } = Dimensions.get('window');
 const TILE_W = (SW - 48) / 2;
@@ -247,6 +249,33 @@ export default function DashboardScreen() {
     H.tap();
     setShowSurveyPrompt(false);
     await markPrompted();          // dismissing buys the same 5 days as answering
+  }
+
+  // The one-time church ask for accounts that predate the sign-up step.
+  // Starts dismissed so nothing flashes before the per-user flag is read.
+  const [churchPromptDismissed, setChurchPromptDismissed] = useState(true);
+  useEffect(() => {
+    if (demoMode || !user) return;
+    let live = true;
+    loadChurchPromptDismissed().then(v => { if (live) setChurchPromptDismissed(v); });
+    return () => { live = false; };
+  }, [demoMode, user?.id]);
+  const churchPrompt = churchPromptVariant(profile, churchPromptDismissed, demoMode, new Date());
+  // A priest's or servant's church is readable by every signed-in member
+  // (that is how invite codes resolve), so the strip says so to them.
+  const clergy = profile?.role === 'priest' || profile?.role === 'servant';
+  // Behind the consent modal and the survey strip: one ask per open.
+  const showChurchPrompt = !demoMode && churchPrompt !== 'none' && !showVitalsConsent && !showSurveyPrompt;
+
+  async function dismissChurchPromptStrip() {
+    H.tap();
+    setChurchPromptDismissed(true);
+    await dismissChurchPrompt();
+  }
+
+  function openChurchPicker() {
+    H.tap();
+    router.push({ pathname: '/profile', params: { pickChurch: '1', q: profile?.church_name ?? '' } });
   }
 
   // Auto-show vitals consent modal when congregant has an FOC but hasn't decided yet
@@ -663,6 +692,37 @@ export default function DashboardScreen() {
               </TouchableOpacity>
               <TouchableOpacity onPress={dismissSurveyPrompt} hitSlop={8}>
                 <Text style={styles.surveyPromptSkip}>Not now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Church prompt — same shape as the survey strip, same reasons.
+            "choose": no church at all. "confirm": a name typed by hand that
+            may well be in the directory now; asked after a week so a member
+            who just typed an unlisted parish is not nagged on day one. */}
+        {showChurchPrompt && (
+          <View style={styles.surveyPrompt}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.surveyPromptTitle}>
+                {churchPrompt === 'confirm'
+                  ? `Is "${profile?.church_name ?? ''}" in the directory?`
+                  : clergy ? 'Which church do you serve at?' : 'Which church do you attend?'}
+              </Text>
+              <Text style={styles.surveyPromptBody}>
+                {churchPrompt === 'confirm'
+                  ? 'Pick it from the list so your parish is counted — or keep the name you typed.'
+                  : clergy
+                  ? 'Members who look you up by invite code will see it. You can change it any time in Profile.'
+                  : 'Pick your parish from the directory — it takes a moment, and you can change it any time in Profile.'}
+              </Text>
+            </View>
+            <View style={styles.surveyPromptBtns}>
+              <TouchableOpacity onPress={openChurchPicker} activeOpacity={0.85}>
+                <Text style={styles.surveyPromptGo}>{churchPrompt === 'confirm' ? 'Find it' : 'Choose'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={dismissChurchPromptStrip} hitSlop={8}>
+                <Text style={styles.surveyPromptSkip}>{churchPrompt === 'confirm' ? 'Keep as typed' : 'Not now'}</Text>
               </TouchableOpacity>
             </View>
           </View>

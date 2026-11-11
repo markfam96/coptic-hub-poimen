@@ -39,7 +39,14 @@
 //                        zone and an hour. Expo carries them, so it sees the
 //                        device code and the notification text.
 //   profile fields       Name, church, and confession dates are stored plainly
-//                        so the app can list and match on them.
+//                        so the app can list and match on them. Since
+//                        2026-11-03 the church is chosen at sign-up (or later
+//                        in Profile) from a list imported from the Coptic
+//                        Orthodox Directory, or typed when it isn't listed;
+//                        church_id + church_name land in the same insert as
+//                        the account (handle_new_user). Admins see everyone's;
+//                        a linked FOC or servant sees their members'; any
+//                        signed-in member sees a priest's or servant's.
 //   contact + family     PHASE 1 of the rollout: pastoral_contacts (phone,
 //                        email, full address) and pastoral_children (names and
 //                        birth years) are written BOTH sealed and in plain
@@ -87,8 +94,31 @@ export const PRIVACY_COPY = {
     'What you write in Confession stays on your device. Prayer requests and pastoral notes are ' +
     'encrypted so only their intended reader can open them.',
 
-  // Church picker, under "Sort by nearest".
-  churchLocation: 'Your location is used on this phone to order the list and is never sent or saved.',
+  // Sign-up, under the church field. Who can read profiles.church_id/church_name
+  // follows the profiles SELECT policies: admins (every row), the member's FOC
+  // after linking ("priest sees flock"), the member's servant ("servant sees
+  // students"). The directory is never told who picked what.
+  churchChoice:
+    'Your church is saved on your profile as written, next to your name. The people who run ' +
+    'Nepsis can see it, and so can your Father of Confession or servant once you link with them. ' +
+    'Nothing is sent to the church directory.',
+
+  // Same field when signing up as a priest or servant. Their row is readable by
+  // every signed-in member ("priest servant profiles are discoverable", to
+  // authenticated) — not only by someone holding their invite code — so say so.
+  churchChoiceClergy:
+    'Your church is saved on your profile as written, next to your name. Because you are ' +
+    'signing up as a priest or servant, any signed-in member can see your name and church — ' +
+    'that is how members find you by invite code. The people who run Nepsis can see it too. ' +
+    'Nothing is sent to the church directory.',
+
+  // Church picker, under "Sort by nearest" (sign-up and Profile). The order and
+  // the distance beside each church are worked out on the phone from a fix
+  // asked for only when the button is tapped (lib/location.ts); the fix goes
+  // nowhere.
+  churchLocation:
+    'Your location is used on this phone to order the list and show how far each church is. ' +
+    'It is never sent or saved.',
 
   // Onboarding / tutorial step.
   onboardingTitle: 'What stays on your device',

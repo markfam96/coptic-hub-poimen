@@ -30,17 +30,22 @@ The rest of "say plainly what is private" shipped (see Shipped 2026-10-14).
 tutorial, before the first entry is made.
 
 **Sort churches by distance in the picker.**
-*(Built 2026-10-23. Live on web; phones need the next App Store build, with a
-version above 1.1.0.)* "◎ Sort by nearest" in the Profile church picker asks
-for location only when tapped and orders the list nearest first, no distance
-shown. Declining keeps the A–Z list. The location is used on the phone only
+*(Built 2026-10-23; distances shown since 2026-11-03. Live on web; phones need
+the 1.2.0 App Store build.)* "◎ Sort by nearest" in the church picker — one
+component now, shared by sign-up and Profile (`components/ChurchPicker.tsx`) —
+asks for location only when tapped and orders the list nearest first, with the
+distance beside each church (mi or km from the phone's locale, one tap to
+flip). A church the directory places at a city or state centroid reads
+"~2.3 mi · near Cairo", so the number is not mistaken for the building.
+Declining keeps the A–Z list. The location is used on the phone only
 (`lib/location.ts`, `lib/geo.ts`) and never sent.
   - `churches.latitude / longitude`
     (`20261023020000_church_coordinates.sql`, applied 2026-10-23). The admin
     form geocodes on save through Nominatim (`lib/geocode.ts`); a church that
     can't be found still saves and sorts after the placed ones.
-  - Backfilled 4 of 5 churches. "100 Test Ave, Springfield, VA" (St. Mary &
-    Archangel Michael) looks like test data and has no coordinates.
+  - Backfilled 4 of 5 churches by hand; the directory import of 2026-11-03
+    (see Shipped) brought 1,151 placed rows. "100 Test Ave, Springfield, VA"
+    (St. Mary & Archangel Michael) looks like test data and has no coordinates.
   - `expo-location` is loaded lazily, so an over-the-air update reaching a
     1.1.0 phone (no native module) shows "location isn't available" instead
     of crashing. Still bump the version for the build that ships it.
@@ -70,30 +75,6 @@ parish boundaries, and it cannot simply reuse the class query.
     board shows, or less.
 
 ### Queued 2026-10-14
-
-**Require a church at sign-up.**
-`handle_new_user` inserts only `id`, `full_name` and `role`, and `church_id` is
-written in exactly one place — the church picker on the Profile screen
-(`app/profile.tsx`). So every account starts unassigned and most stay that way;
-`get_church_breakdown` had to grow an "unassigned" row to make the per-church
-counts add up. Move the choice into sign-up:
-  - Reuse the existing church picker (name/city search) as a sign-up step, for
-    every role, before the account is created.
-  - Show each church's full address (street, city, state, zip) in the sign-up
-    list and on the confirmation, not only the name — some parishes have two
-    locations under the same name (STSA: Leesburg and Arlington), and the
-    address is the only way to tell them apart. The Profile screen should show
-    at least the city next to the chosen church for the same reason.
-  - A "My church isn't listed" path that still lets the person in — a request to
-    add the parish, kept unassigned until an admin adds it — rather than a dead
-    end that loses the sign-up.
-  - Send the choice through sign-up metadata so `handle_new_user` writes
-    `church_id` in the same transaction, instead of a second update after.
-  - Existing unassigned accounts: a one-time "Choose your church" prompt on next
-    launch, skippable, rather than blocking the app.
-  - Decide whether a priest's church is fixed or editable, and whether a member's
-    church must match their Father of Confession's (probably not — members
-    visit, move, and keep their FOC).
 
 **Import congregants from a CSV.**
 Let a priest (or an admin, on a church's behalf) bring an existing parish list
@@ -191,6 +172,96 @@ dual-written (sealed payload plus a plaintext copy) until build 17 retires.
 Kept here so a finished item is not queued again. Outside the "Next Up" block
 on purpose: scripts/gen-roadmap.mjs stops at the next top-level heading, so
 none of this reaches the in-app roadmap.
+
+### Shipped 2026-11-03
+
+**Require a church at sign-up.**
+The church is chosen in the sign-up form itself, for every role, before the
+account exists: a church field sits between Full name and Email and opens the
+same picker Profile uses (`components/ChurchPicker.tsx`). The choice rides in
+the sign-up metadata and `handle_new_user` writes `church_id` and `church_name`
+in the same insert as the account
+(`20261103010000_church_directory_columns.sql`). Sign-ups from the web and
+from the 1.2.0 build always carry a church; a "My church isn't listed" choice
+still has `church_id` null (its typed name is on the profile) and so stays in
+the `get_church_breakdown` "unassigned" row, as do sign-ups from 1.1.0 phones
+until those phones update. Web gets it on deploy; phones with the 1.2.0 store
+build — `app.json` is bumped so 1.1.0 phones never receive JS that assumes the
+new native module, which also means 1.1.0 phones get no OTA updates from this
+merge until 1.2.0 is approved.
+  - The list is the Coptic Orthodox Directory (https://directory.nihov.org,
+    volunteer-run): 1,151 churches and monasteries in 59 countries, turned into
+    `2026110302000N_seed_churches_from_directory_NofM.sql` by
+    `scripts/import-churches.ts` (five files in this run, each its own
+    migration version, each under the 45 KB paste cap, each re-runnable; the
+    schema file goes first; the last file ends with a result set naming any
+    directory rows that left the feed and the row counts). Only name, nickname, address
+    parts, coordinates, kind and precision are imported — never phone or
+    website, which the directory's terms forbid harvesting — and the picker
+    credits the directory on every open. Colleges and the one school are left
+    out; monasteries stay. Country is ISO-2 and shown by name; US/CA/AU states
+    are postal codes.
+  - Three of the five hand-entered rows were the same buildings as directory
+    entries (Fairfax #125, Westlake #588, Arlington #494). They are adopted by
+    id, so the seed updates them in place and nobody's `church_id` breaks.
+    Fairfax takes the directory's name, "St. Mark Coptic Orthodox Church of
+    Washington DC", and its members' `church_name` follows (the last seed file
+    syncs `church_name` to `churches.name` wherever `church_id` is set).
+    Leesburg has no directory entry and stays manual: suggest it through the
+    directory's feedback form, and when it appears add an adoption line next
+    to the three in `20261103010000` and re-paste.
+  - "My church isn't listed" takes a typed name (`church_id` null,
+    `church_name` "name, city"), so nobody is turned away, and a list that
+    fails to load never blocks the account.
+  - Existing unassigned accounts get a one-time strip on Home — "Which church
+    do you attend?", or "Is X in the directory?" for a typed name older than a
+    week; priests and servants are asked which church they serve at and told
+    members will see it. "Not now" is remembered per user on that device.
+    Nothing is auto-matched: a parish is never guessed for someone.
+  - `getChurches()` now pages 1,000 at a time; PostgREST's default cap would
+    otherwise drop the 151 rows after "St. Paul" with no error. Also raise
+    Supabase → Project Settings → API → Max rows from 1000 to 2000, so the old
+    unpaginated picker on 1.1.0 phones shows all 1,153 rows until they update.
+  - Churches are never deleted (`profiles.church_id` is ON DELETE SET NULL, so
+    a delete silently un-churches members); `hidden_at` hides a row from the
+    picker instead, and a refresh never sets or clears it. "100 Test Ave" is
+    left for the dashboard: run the two selects in the migration header, and
+    if nothing points at it, `update churches set hidden_at = now() where id =
+    '<id>'`.
+  - Feed-internal twins (Kingston 646/498, Calgary 809/801, Beni Suef
+    1044/1045 and the others the import report lists) are imported as they
+    are and never merged in code. If upstream never fixes one: repoint
+    `profiles.church_id` to the kept row, set `hidden_at` on the other.
+  - Refresh, on request or quarterly. From `poimen/`: download the feed with
+    `curl -A 'Nepsis church import (+https://directory.nihov.org/feedback)' -o map_xml.xml https://directory.nihov.org/report/map_xml.php`
+    (gitignored), run
+    `npm run import:churches -- --in map_xml.xml --out-dir supabase/migrations --stamp 20261103020000`
+    with the SAME stamp every time — the generator replaces its own files in
+    place, so the git diff shows what changed in the directory — then paste
+    the generated files in order and read the result set at the end of the
+    last file ("nihov_rows_no_longer_in_feed"). For each id it lists, run
+    `select id, full_name from profiles where church_id = (select id from churches where source='nihov' and source_id='<id>')`,
+    then `update churches set hidden_at = now() where source='nihov' and source_id='<id>'`
+    if the church really closed. The generator refuses what it does not
+    recognise — a 60th country, a non-XML body, fewer than 1,000 markers, an
+    unmapped US/CA/AU state — rather than guess, and the raw XML is not
+    committed (the headers carry its date, marker count and SHA-256).
+  - Before the first paste: a courtesy note through the directory's feedback
+    form saying what Nepsis imports and that it links back.
+  - Small choices worth knowing: a nickname is hidden when the church's name
+    already carries it ("… of Washington DC"); search ignores accents and
+    punctuation ("quebec", "St. Mary, Leesburg"); the "isn't listed" hint
+    links to the directory's Add Church form; on web the location-denied line
+    points to the browser's site settings (there is no Settings app to open).
+  - Deferred: the generator's `--manual <csv>` report that would match
+    hand-entered rows to directory rows within 150 m; the three live matches
+    were made by hand and adopted by id in the schema migration.
+  - Left open: whether a priest's church is fixed, and whether a member's must
+    match their Father of Confession's (nothing enforces either); an admin view
+    of the "isn't listed" names (interim:
+    `select church_name, count(*) from profiles where church_id is null and church_name is not null group by 1 order by 2 desc`);
+    a country field on the admin add-church form (`createChurch` still writes
+    'US').
 
 ### Shipped 2026-10-23
 

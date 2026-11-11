@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Platform, Modal, FlatList,
+  TextInput, ActivityIndicator, Alert, Platform,
 } from 'react-native';
-import type { Church } from '@/lib/db';
-import { formatChurchAddress } from '@/lib/db/profiles';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as H from '@/lib/haptics';
 import { goBack } from '@/lib/nav';
 import { useSession } from '@/lib/auth';
@@ -24,8 +22,9 @@ import { confirmDestructive } from '@/lib/confirm';
 import { pickPhoto, uploadAvatarImage, removeAvatarImage, selfAvatarPath, cameraAvailable, PhotoSource } from '@/lib/avatar';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
-import { sortByDistance, type LatLng } from '@/lib/geo';
-import { getApproxLocation } from '@/lib/location';
+import { useChurchList } from '@/lib/church-list';
+import { ChurchField, ChurchPicker } from '@/components/ChurchPicker';
+import { type ChurchChoice, churchChoiceToFields } from '@/lib/church-choice';
 import { seal, openContactSelf, openChildrenSelf, needsSealing } from '@/lib/pastoral-secure';
 import type { ContactData, ChildData, OpenedChild } from '@/lib/pastoral-secure';
 
@@ -109,32 +108,33 @@ export default function ProfileScreen() {
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [churchName, setChurchName] = useState(profile?.church_name ?? '');
   const [churchId, setChurchId] = useState<string | null>(profile?.church_id ?? null);
-  const [churches, setChurches] = useState<Church[]>([]);
-  const [showChurchPicker, setShowChurchPicker] = useState(false);
-  const [churchQuery, setChurchQuery] = useState('');
-  // "Sort by nearest" is optional and only reorders: declining location
-  // leaves the usual alphabetical list, with nothing lost.
-  const [here, setHere] = useState<LatLng | null>(null);
-  const [nearStatus, setNearStatus] = useState<'idle' | 'locating' | 'denied' | 'unavailable'>('idle');
-  const matchingChurches = React.useMemo(() => {
-    const q = churchQuery.trim().toLowerCase();
-    const found = q
-      ? churches.filter(c => `${c.name} ${formatChurchAddress(c)}`.toLowerCase().includes(q))
-      : churches;
-    return here ? sortByDistance(found, here) : found;
-  }, [churches, churchQuery, here]);
+  const list = useChurchList(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // The Home strip's "Find it" arrives with pickChurch=1 and the name the
+  // member once typed; the sheet opens once there is a list to search.
+  const { pickChurch, q } = useLocalSearchParams<{ pickChurch?: string; q?: string }>();
+  const [pickerQuery, setPickerQuery] = useState<string | undefined>(undefined);
+  const [openedFromHome, setOpenedFromHome] = useState(false);
+  useEffect(() => {
+    // 'failed' opens too: the sheet shows the error, a Retry and the typed path.
+    if (pickChurch !== '1' || openedFromHome || (list.status !== 'ready' && list.status !== 'failed')) return;
+    setOpenedFromHome(true);
+    setPickerQuery(q ?? '');
+    setPickerOpen(true);
+  }, [pickChurch, q, openedFromHome, list.status]);
 
-  async function sortByNearest() {
-    if (here) { setHere(null); return; }
-    setNearStatus('locating');
-    const result = await getApproxLocation();
-    if (result.status === 'ok') {
-      setHere(result.coords);
-      setNearStatus('idle');
-    } else {
-      setNearStatus(result.status);
+  // What the field shows, from the two columns handleSave writes. An id that
+  // the list does not have (hidden row, or list not loaded yet) is still a
+  // listed church: the member picked it once and the save must not drop it.
+  const churchChoice = useMemo<ChurchChoice | null>(() => {
+    if (churchId) {
+      const row = list.churches?.find(c => c.id === churchId);
+      return { kind: 'listed', church: row ?? { id: churchId, name: churchName } };
     }
-  }
+    if (churchName.trim()) return { kind: 'unlisted', name: churchName, city: '' };
+    return null;
+  }, [churchId, churchName, list.churches]);
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [accountError, setAccountError] = useState('');
@@ -163,10 +163,6 @@ export default function ProfileScreen() {
   const [savingFamily, setSavingFamily] = useState(false);
   const [savedFamily, setSavedFamily] = useState(false);
   const [familyError, setFamilyError] = useState('');
-
-  useEffect(() => {
-    db.getChurches().then(setChurches);
-  }, []);
 
   // Re-runs when the Father of Confession changes, not only on sign-in: the
   // link flow returns to this screen with the component already mounted, and
@@ -215,6 +211,9 @@ export default function ProfileScreen() {
     setSaving(false);
     if (error) { setAccountError('Failed to save — please try again.'); return; }
     setSaved(true);
+    // Home's church strip reads the profile in context; without this it would
+    // keep asking until the next launch.
+    await refreshProfile();
     setTimeout(() => setSaved(false), 2000);
   }
 
@@ -461,22 +460,14 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.field}>
             <Text style={styles.label}>Church</Text>
-            {churches.length > 0 ? (
-              <TouchableOpacity style={styles.churchPicker} onPress={() => setShowChurchPicker(true)}>
-                <Text style={churchId ? styles.churchPickerText : styles.churchPickerPlaceholder}>
-                  {churchId ? (churches.find(c => c.id === churchId)?.name ?? churchName) : (churchName || 'Select your church…')}
-                </Text>
-                <Text style={styles.churchPickerChevron}>›</Text>
-              </TouchableOpacity>
-            ) : (
-              <TextInput
-                style={styles.input}
-                value={churchName}
-                onChangeText={setChurchName}
-                placeholder="E.g., St. Mary's Coptic Orthodox Church"
-                placeholderTextColor={colors.faint}
-              />
-            )}
+            <ChurchField
+              value={churchChoice}
+              status={list.status}
+              placeholder="Select your church…"
+              style={styles.churchPicker}
+              textSize={14}
+              onPress={() => setPickerOpen(true)}
+            />
           </View>
           {accountError ? <Text style={styles.fieldError}>{accountError}</Text> : null}
           <TouchableOpacity
@@ -854,80 +845,21 @@ export default function ProfileScreen() {
 
       </ScrollView>
 
-      {/* ── Church picker modal ── */}
-      {/* Matches on name and on the address exactly as shown beneath it, so
-          searching for what you can see always works — including a city, which
-          is how most people know their parish apart from a similarly named one. */}
-      <Modal visible={showChurchPicker} transparent animationType="slide">
-        <View style={styles.pickerOverlay}>
-          <View style={styles.pickerCard}>
-            <Text style={styles.pickerTitle}>Select Your Church</Text>
-            <TextInput
-              style={styles.pickerSearch}
-              value={churchQuery}
-              onChangeText={setChurchQuery}
-              placeholder="Search by name or city…"
-              placeholderTextColor={colors.faint}
-              autoCorrect={false}
-              clearButtonMode="while-editing"
-            />
-            {churches.some(c => c.latitude != null) && (
-              <View style={styles.nearBlock}>
-                <TouchableOpacity onPress={sortByNearest} disabled={nearStatus === 'locating'} activeOpacity={0.7}>
-                  <Text style={styles.nearBtn}>
-                    {nearStatus === 'locating' ? 'Finding churches near you…'
-                      : here ? 'Sorted by nearest · Show A–Z'
-                      : '◎ Sort by nearest'}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={styles.nearNote}>
-                  {nearStatus === 'denied'
-                    ? 'Location is off for Nepsis, so the list stays A–Z. You can turn it on in your phone’s Settings.'
-                    : nearStatus === 'unavailable'
-                    ? 'Location isn’t available right now, so the list stays A–Z.'
-                    : PRIVACY_COPY.churchLocation}
-                </Text>
-              </View>
-            )}
-            <FlatList
-              data={matchingChurches}
-              keyExtractor={c => c.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.pickerRow, churchId === item.id && styles.pickerRowActive]}
-                  onPress={() => {
-                    setChurchId(item.id);
-                    setChurchName(item.name);
-                    setChurchQuery('');
-                    setShowChurchPicker(false);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pickerRowName, churchId === item.id && styles.pickerRowNameActive]}>
-                      {item.name}
-                    </Text>
-                    {formatChurchAddress(item) ? (
-                      <Text style={styles.pickerRowAddress}>{formatChurchAddress(item)}</Text>
-                    ) : null}
-                  </View>
-                  {churchId === item.id && <Text style={styles.pickerCheck}>✓</Text>}
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={styles.pickerDivider} />}
-              ListEmptyComponent={
-                <Text style={styles.pickerEmpty}>
-                  {churches.length === 0
-                    ? 'No churches have been added yet.'
-                    : `No church matches “${churchQuery.trim()}”.`}
-                </Text>
-              }
-            />
-            <TouchableOpacity style={styles.pickerCancel} onPress={() => { setChurchQuery(''); setShowChurchPicker(false); }}>
-              <Text style={styles.pickerCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <ChurchPicker
+        visible={pickerOpen}
+        onClose={() => { setPickerOpen(false); setPickerQuery(undefined); }}
+        value={churchChoice}
+        onChange={c => {
+          const f = churchChoiceToFields(c);
+          setChurchId(f.church_id);
+          setChurchName(f.church_name);
+        }}
+        churches={list.churches}
+        status={list.status}
+        loadError={list.error}
+        onRetry={list.reload}
+        initialQuery={pickerQuery}
+      />
     </SafeAreaView>
   );
 }
@@ -1049,30 +981,6 @@ const styles = lazyThemed(() => StyleSheet.create({
     backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
     borderRadius: 8, padding: 12,
   },
-  churchPickerText: { flex: 1, fontFamily: fonts.latoLight, fontSize: 14, color: colors.cream },
-  churchPickerPlaceholder: { flex: 1, fontFamily: fonts.latoLight, fontSize: 14, color: colors.faint },
-  churchPickerChevron: { fontFamily: fonts.cormorant, fontSize: 20, color: colors.muted },
-
-  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  pickerCard: {
-    backgroundColor: colors.navyMid, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    borderWidth: 1, borderColor: colors.border, padding: 24, paddingBottom: 40, maxHeight: '70%' as any,
-  },
-  pickerTitle: { fontFamily: fonts.cormorantMedium, fontSize: 22, color: colors.cream, marginBottom: 16 },
-  pickerRow: { paddingVertical: 14, flexDirection: 'row', alignItems: 'center' },
-  pickerRowActive: { opacity: 1 },
-  pickerRowName: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.cream },
-  pickerRowNameActive: { color: colors.goldLight },
-  pickerSearch: { fontFamily: fonts.lato, fontSize: 14, color: colors.cream, borderWidth: 1, borderColor: colors.border, borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 },
-  nearBlock: { marginBottom: 10 },
-  nearBtn: { fontFamily: fonts.latoBold, fontSize: 12, letterSpacing: 0.4, color: colors.gold, paddingVertical: 4 },
-  nearNote: { fontFamily: fonts.latoLight, fontSize: 11, lineHeight: 15, color: colors.muted, marginTop: 2 },
-  pickerEmpty: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted, textAlign: 'center', paddingVertical: 24 },
-  pickerRowAddress: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 2 },
-  pickerCheck: { fontFamily: fonts.latoBold, fontSize: 14, color: colors.gold },
-  pickerDivider: { height: 1, backgroundColor: colors.border },
-  pickerCancel: { marginTop: 16, alignItems: 'center', paddingVertical: 12 },
-  pickerCancelText: { fontFamily: fonts.latoBold, fontSize: 12, color: colors.muted, letterSpacing: 0.5 },
 
   vitalsToggleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

@@ -12,3 +12,6 @@ expo-env.d.ts
 
 # Supabase CLI cache (project link ref etc.)
 supabase/.temp/
+
+# the Coptic Orthodox Directory feed, downloaded by hand for scripts/import-churches.ts — never committed
+map_xml.xml

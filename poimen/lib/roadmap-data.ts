@@ -30,10 +30,10 @@ export const PHASES: RoadmapPhase[] = [
       {
         "id": "queued-2026-09-07-3",
         "label": "Sort churches by distance in the picker",
-        "note": "*(Built 2026-10-23. Live on web; phones need the next App Store build, with a version above 1.1.0.)* \"◎ Sort by nearest\" in the Profile church picker asks for location only when tapped and orders the list nearest first, no distance shown. Declining keeps the A–Z list. The location is used on the phone only (lib/location.ts, lib/geo.ts) and never sent",
+        "note": "*(Built 2026-10-23; distances shown since 2026-11-03. Live on web; phones need the 1.2.0 App Store build.)* \"◎ Sort by nearest\" in the church picker — one component now, shared by sign-up and Profile (components/ChurchPicker.tsx) — asks for location only when tapped and orders the list nearest first, with the distance beside each church (mi or km from the phone's locale, one tap to flip). A church the directory places at a city or state centroid reads \"~2.3 mi · near Cairo\", so the number is not mistaken for the building. Declining keeps the A–Z list. The location is used on the phone only (lib/location.ts, lib/geo.ts) and never sent",
         "detail": [
           "churches.latitude / longitude (20261023020000_church_coordinates.sql, applied 2026-10-23). The admin form geocodes on save through Nominatim (lib/geocode.ts); a church that can't be found still saves and sorts after the placed ones.",
-          "Backfilled 4 of 5 churches. \"100 Test Ave, Springfield, VA\" (St. Mary & Archangel Michael) looks like test data and has no coordinates.",
+          "Backfilled 4 of 5 churches by hand; the directory import of 2026-11-03 (see Shipped) brought 1,151 placed rows. \"100 Test Ave, Springfield, VA\" (St. Mary & Archangel Michael) looks like test data and has no coordinates.",
           "expo-location is loaded lazily, so an over-the-air update reaching a 1.1.0 phone (no native module) shows \"location isn't available\" instead of crashing. Still bump the version for the build that ships it.",
           "Test on a phone (Expo Go has location): allow, deny, and deny-then-retry.",
           "No admin way to edit an existing church's address yet, so changing one in the Supabase dashboard leaves its coordinates stale."
@@ -59,19 +59,6 @@ export const PHASES: RoadmapPhase[] = [
     "items": [
       {
         "id": "queued-2026-10-14-1",
-        "label": "Require a church at sign-up",
-        "note": "handle_new_user inserts only id, full_name and role, and church_id is written in exactly one place — the church picker on the Profile screen (app/profile.tsx). So every account starts unassigned and most stay that way; get_church_breakdown had to grow an \"unassigned\" row to make the per-church counts add up. Move the choice into sign-up",
-        "detail": [
-          "Reuse the existing church picker (name/city search) as a sign-up step, for every role, before the account is created.",
-          "Show each church's full address (street, city, state, zip) in the sign-up list and on the confirmation, not only the name — some parishes have two locations under the same name (STSA: Leesburg and Arlington), and the address is the only way to tell them apart. The Profile screen should show at least the city next to the chosen church for the same reason.",
-          "A \"My church isn't listed\" path that still lets the person in — a request to add the parish, kept unassigned until an admin adds it — rather than a dead end that loses the sign-up.",
-          "Send the choice through sign-up metadata so handle_new_user writes church_id in the same transaction, instead of a second update after.",
-          "Existing unassigned accounts: a one-time \"Choose your church\" prompt on next launch, skippable, rather than blocking the app.",
-          "Decide whether a priest's church is fixed or editable, and whether a member's church must match their Father of Confession's (probably not — members visit, move, and keep their FOC)."
-        ]
-      },
-      {
-        "id": "queued-2026-10-14-2",
         "label": "Import congregants from a CSV",
         "note": "Let a priest (or an admin, on a church's behalf) bring an existing parish list in, instead of every member finding the app on their own. Open questions first",
         "detail": [
@@ -85,7 +72,7 @@ export const PHASES: RoadmapPhase[] = [
         ]
       },
       {
-        "id": "queued-2026-10-14-3",
+        "id": "queued-2026-10-14-2",
         "label": "Enforce the invite code on the server",
         "note": "Joining a flock (or a servant's class) is a plain update of the member's own foc_id / servant_id; the six-character code is only checked in the app, and priest ids are readable by any signed-in user. A stranger can therefore attach to any priest's flock — see his appointment types and availability, request appointments, appear on his roster",
         "detail": [
@@ -95,7 +82,7 @@ export const PHASES: RoadmapPhase[] = [
         ]
       },
       {
-        "id": "queued-2026-10-14-4",
+        "id": "queued-2026-10-14-3",
         "label": "Pitch page: what a priest needs before saying yes",
         "detail": [
           "\"Up and running in an afternoon\" — download, share the invite code, members choose him.",

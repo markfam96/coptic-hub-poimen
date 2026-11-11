@@ -36,3 +36,19 @@ export function sortByDistance<T extends Placed>(items: T[], here: LatLng): T[] 
   unplaced.sort((a, b) => a.name.localeCompare(b.name));
   return [...placed.map(p => p.item), ...unplaced];
 }
+
+// Nearest first WITH the distance, for a list that shows how far each row
+// is. Same ordering rules as sortByDistance: placed rows by km then name
+// (69 directory rows share one Cairo centroid and must come out in a stable
+// order), unplaced rows alphabetical at the end with km null, input untouched.
+export function rankByDistance<T extends Placed>(items: T[], here: LatLng): { item: T; km: number | null }[] {
+  const placed: { item: T; km: number }[] = [];
+  const unplaced: T[] = [];
+  for (const item of items) {
+    if (item.latitude == null || item.longitude == null) unplaced.push(item);
+    else placed.push({ item, km: distanceKm(here, { latitude: item.latitude, longitude: item.longitude }) });
+  }
+  placed.sort((a, b) => a.km - b.km || a.item.name.localeCompare(b.item.name));
+  unplaced.sort((a, b) => a.name.localeCompare(b.name));
+  return [...placed, ...unplaced.map(item => ({ item, km: null }))];
+}

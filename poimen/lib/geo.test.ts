@@ -37,3 +37,29 @@ test('does not change the list it was given', () => {
   sortByDistance(churches, fairfax);
   assert.deepEqual(churches.map(c => c.name), ['B', 'A']);
 });
+
+import { rankByDistance } from './geo.ts';
+
+test('rankByDistance carries the distance and keeps unplaced rows last', () => {
+  const churches = [
+    { name: 'Zeta', latitude: null, longitude: null },
+    { name: 'Westlake', ...westlake },
+    { name: 'Arlington', ...arlington },
+    { name: 'Alpha', latitude: null, longitude: null },
+  ];
+  const ranked = rankByDistance(churches, fairfax);
+  assert.deepEqual(ranked.map(r => r.item.name), ['Arlington', 'Westlake', 'Alpha', 'Zeta']);
+  assert.ok(ranked[0].km! > 23 && ranked[0].km! < 25);
+  assert.ok(ranked[1].km! > 400);
+  assert.equal(ranked[2].km, null);
+  assert.equal(ranked[3].km, null);
+  assert.deepEqual(churches.map(c => c.name), ['Zeta', 'Westlake', 'Arlington', 'Alpha'], 'input not mutated');
+});
+
+test('rows on one shared centroid come out alphabetical', () => {
+  const cairo = { latitude: 30.064741, longitude: 31.24951 };
+  const churches = ['St. Mina', 'Archangel Michael', 'St. Mary', 'St. George'].map(name => ({ name, ...cairo }));
+  const ranked = rankByDistance(churches, { latitude: 30.1, longitude: 31.3 });
+  assert.deepEqual(ranked.map(r => r.item.name), ['Archangel Michael', 'St. George', 'St. Mary', 'St. Mina']);
+  assert.ok(ranked.every(r => r.km === ranked[0].km));
+});

@@ -41,7 +41,17 @@ export async function signInWithPassword(email: string, password: string): Promi
 
 export type SignupRole = 'congregant' | 'servant' | 'priest';
 
-export async function signUp(email: string, password: string, fullName: string, requestedRole: SignupRole = 'congregant', redirectTo?: string): Promise<{ error: string | null }> {
+// The church chosen at sign-up. church_id null + a name means "my church
+// isn't listed" (lib/church-choice.ts).
+export interface SignupChurch {
+  church_id: string | null;
+  church_name: string;
+}
+
+export async function signUp(
+  email: string, password: string, fullName: string,
+  requestedRole: SignupRole = 'congregant', redirectTo?: string, church?: SignupChurch,
+): Promise<{ error: string | null }> {
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -49,7 +59,15 @@ export async function signUp(email: string, password: string, fullName: string, 
     // client can never grant itself a role. All three are granted directly;
     // a priest sees nothing until a member links to them (see
     // 20260913010000_remove_priest_approval.sql).
-    options: { data: { full_name: fullName, requested_role: requestedRole }, emailRedirectTo: redirectTo },
+    //
+    // The church rides in the same metadata so profiles.church_id is written
+    // in the same transaction as the account. The trigger validates both: an
+    // id counts only if it names a churches row, whose name then overrides the
+    // typed one. What the client sends is a claim, not a fact.
+    options: {
+      data: { full_name: fullName, requested_role: requestedRole, ...(church ?? {}) },
+      emailRedirectTo: redirectTo,
+    },
   });
   return { error: error?.message ?? null };
 }

@@ -10,6 +10,9 @@ import { colors, fonts , lazyThemed } from '@/lib/theme';
 import type { SignupRole } from '@/lib/db';
 import { EyeIcon, EyeOffIcon } from '@/components/ui/TabIcons';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
+import { useChurchList } from '@/lib/church-list';
+import { ChurchField, ChurchPicker } from '@/components/ChurchPicker';
+import { type ChurchChoice, churchChoiceToFields } from '@/lib/church-choice';
 
 type Mode = 'signin' | 'signup' | 'magic' | 'reset';
 
@@ -32,10 +35,16 @@ export default function SignInScreen() {
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [church, setChurch] = useState<ChurchChoice | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Fetched only once the member is creating an account, never for a sign-in.
+  const list = useChurchList(mode === 'signup');
 
   function switchMode(m: Mode) {
     setMode(m);
     setSignupRole('congregant');
+    setChurch(null);
+    setPickerOpen(false);
     setError('');
     setInfo('');
   }
@@ -49,7 +58,14 @@ export default function SignInScreen() {
       if (error) setError(error);
       else router.replace('/(tabs)');
     } else if (mode === 'signup') {
-      const { error } = await signUpWithEmail(email.trim(), password, fullName.trim(), signupRole);
+      // Required, but never blocked by the list: the unlisted path inside the
+      // picker works while the list is loading or after it failed.
+      if (!church) {
+        setError('Choose your church — or tap "My church isn\'t listed" and type its name.');
+        setLoading(false);
+        return;
+      }
+      const { error } = await signUpWithEmail(email.trim(), password, fullName.trim(), signupRole, churchChoiceToFields(church));
       if (error) setError(error);
       else setInfo('Check your email to confirm your account, then sign in.');
     } else if (mode === 'magic') {
@@ -126,6 +142,19 @@ export default function SignInScreen() {
                 onChangeText={setFullName}
                 autoCapitalize="words"
               />
+            )}
+            {mode === 'signup' && (
+              <>
+                <ChurchField
+                  value={church}
+                  status={list.status}
+                  style={styles.input}
+                  onPress={() => setPickerOpen(true)}
+                />
+                <Text style={styles.roleNote}>
+                  {signupRole === 'congregant' ? PRIVACY_COPY.churchChoice : PRIVACY_COPY.churchChoiceClergy}
+                </Text>
+              </>
             )}
 
             <TextInput
@@ -217,6 +246,18 @@ export default function SignInScreen() {
           </Text>
 
         </ScrollView>
+        {mode === 'signup' && (
+          <ChurchPicker
+            visible={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            value={church}
+            onChange={c => { setChurch(c); setPickerOpen(false); }}
+            churches={list.churches}
+            status={list.status}
+            loadError={list.error}
+            onRetry={list.reload}
+          />
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
