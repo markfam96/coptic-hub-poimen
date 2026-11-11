@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { Redirect, Stack, useSegments, SplashScreen } from 'expo-router';
 import { View } from 'react-native';
@@ -36,6 +36,7 @@ import { Modal, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingV
 import { MIN_PIN_LENGTH } from '@/lib/crypto';
 import { colors, fonts, applyTheme, loadThemeMode, lazyThemed, ThemeMode } from '@/lib/theme';
 import { isBiometricAvailable, loadFaceIdLockEnabled, authenticateWithBiometrics, onFaceIdLockChange } from '@/lib/biometrics';
+import { lockStep, INITIAL_LOCK_STATE, type LockEvent, type LockState } from '@/lib/face-id-lock';
 import type { AuthSession } from '@/lib/db';
 
 SplashScreen.preventAutoHideAsync();
@@ -61,15 +62,46 @@ const WEB_DIRECTION = Platform.OS === 'web' ? ({ dir: isRTL ? 'rtl' : 'ltr' } as
 // without this anyone with the unlocked phone could open straight into
 // confession/pastoral data. Locks on every foreground resume, not just cold
 // start.
+// The lock's state lives here, at module level, not in the component. The
+// root layout component can be torn down and rebuilt while the app runs (a
+// device log showed it happen right after unlocking, as the navigator mounts
+// for the first time). With the state in a ref, the rebuilt lock forgot it
+// had just been unlocked and asked for Face ID / the passcode a second time.
+// Module state lasts exactly as long as the JS does, so a real cold start
+// still begins locked.
+const faceIdLock = {
+  state: INITIAL_LOCK_STATE as LockState,
+  listeners: new Set<() => void>(),
+  // Whether biometrics are available and the lock is switched on, once read.
+  // Kept so a rebuilt component knows at once, instead of briefly treating
+  // the lock as off while it reads them again.
+  settings: null as null | { available: boolean; enabled: boolean },
+};
+
+function lockDispatch(event: LockEvent) {
+  const { state, prompt } = lockStep(faceIdLock.state, event);
+  faceIdLock.state = state;
+  // Development builds log every step to the Metro terminal, so a second
+  // prompt on a real phone can be traced. Nothing is logged in release.
+  if (__DEV__) {
+    console.log(`[face-id] ${JSON.stringify(event)} → locked=${state.locked} prompting=${state.prompting}${prompt ? ' → PROMPT' : ''}`);
+  }
+  faceIdLock.listeners.forEach(l => l());
+  if (prompt) {
+    authenticateWithBiometrics().then(ok => lockDispatch({ type: 'promptDone', ok, at: Date.now() }));
+  }
+}
+
 function useFaceIdLock(session: AuthSession | null, demoMode: boolean) {
-  const [ready, setReady] = useState(false);
-  const [available, setAvailable] = useState(false);
-  const [enabled, setEnabled] = useState(false);
-  const [locked, setLocked] = useState(false);
+  const cached = faceIdLock.settings;
+  const [ready, setReady] = useState(cached !== null);
+  const [available, setAvailable] = useState(cached?.available ?? false);
+  const [enabled, setEnabled] = useState(cached?.enabled ?? false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([isBiometricAvailable(), loadFaceIdLockEnabled()]).then(([avail, pref]) => {
+      faceIdLock.settings = { available: avail, enabled: pref };
       if (cancelled) return;
       setAvailable(avail);
       setEnabled(pref);
@@ -78,7 +110,10 @@ function useFaceIdLock(session: AuthSession | null, demoMode: boolean) {
     // Track the Profile toggle live — this hook outlives that screen, so
     // without the subscription a change only lands on the next app launch
     // (worst case: Face ID turned OFF but the lock keeps prompting).
-    const unsub = onFaceIdLockChange(setEnabled);
+    const unsub = onFaceIdLockChange(on => {
+      if (faceIdLock.settings) faceIdLock.settings.enabled = on;
+      setEnabled(on);
+    });
     return () => { cancelled = true; unsub(); };
   }, []);
 
@@ -86,49 +121,25 @@ function useFaceIdLock(session: AuthSession | null, demoMode: boolean) {
   // (lib/i18n settleLayoutDirection), asking here would only be asked again.
   const protect = ready && available && enabled && !!session && !demoMode && !willReloadForDirection();
 
+  // Re-render when the shared lock state changes.
+  const [, render] = useState(0);
   useEffect(() => {
-    if (protect) setLocked(true);
-    else setLocked(false);
+    const l = () => render(n => n + 1);
+    faceIdLock.listeners.add(l);
+    return () => { faceIdLock.listeners.delete(l); };
+  }, []);
+
+  useEffect(() => {
+    lockDispatch({ type: 'protect', on: protect, appState: AppState.currentState });
   }, [protect]);
 
   useEffect(() => {
-    if (!protect) return;
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setLocked(true);
-    });
+    const sub = AppState.addEventListener('change', state => lockDispatch({ type: 'appState', state, at: Date.now() }));
     return () => sub.remove();
-  }, [protect]);
+  }, []);
 
-  const promptBusy = useRef(false);
-  async function unlock(): Promise<boolean> {
-    if (promptBusy.current) return false;
-    promptBusy.current = true;
-    try {
-      const ok = await authenticateWithBiometrics();
-      if (ok) setLocked(false);
-      return ok;
-    } finally {
-      promptBusy.current = false;
-    }
-  }
-
-  // Auto-prompt only while the app is foregrounded. Locking happens as the
-  // app backgrounds, and a Face ID sheet launched at that moment dies with
-  // the transition — so prompt on the return to 'active' instead, and once
-  // on the initial lock (cold start / toggle-on, where the app is active).
-  const lockedRef = useRef(locked);
-  lockedRef.current = locked;
-  useEffect(() => {
-    if (!protect) return;
-    if (locked && AppState.currentState === 'active') unlock();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && lockedRef.current) unlock();
-    });
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [protect, locked]);
-
-  return { locked: protect && locked, unlock };
+  const unlock = useCallback(() => lockDispatch({ type: 'retry' }), []);
+  return { locked: protect && faceIdLock.state.locked, unlock };
 }
 
 function FaceIdLockScreen({ onRetry }: { onRetry: () => void }) {
