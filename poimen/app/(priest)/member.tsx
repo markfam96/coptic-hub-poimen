@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { HeaderActions } from '@/components/ui/HeaderActions';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
@@ -563,10 +564,13 @@ export default function MemberScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
-        <TouchableOpacity style={styles.backRow} onPress={() => router.push('/(priest)')}>
-          <Text style={styles.backArrow}>{GLYPH.back}</Text>
-          <Text style={styles.backText}>{SHARED.myFlock}</Text>
-        </TouchableOpacity>
+        <View style={styles.topRow}>
+          <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => router.push('/(priest)')}>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{SHARED.myFlock}</Text>
+          </TouchableOpacity>
+          <HeaderActions />
+        </View>
 
         {loading ? (
           <ActivityIndicator color={colors.gold} style={{ paddingTop: 40 }} />
@@ -1034,6 +1038,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+  // The back link and the header actions share one bar.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 

@@ -2,8 +2,6 @@ import type { Localized } from '../core';
 import type { profile as En } from '../en/profile';
 
 export const profile: Localized<typeof En> = {
-  back: 'الرئيسية',
-
   photo: {
     camera: '◉ الكاميرا',
     change: '▤ تغيير الصورة',

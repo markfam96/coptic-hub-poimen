@@ -9,8 +9,8 @@ export const home: Localized<typeof En> = {
     subtitle: '\u200F{date} · {coptic}',
     subtitleFast: '\u200F{date} · {coptic} · اليوم {day} من {fast}',
     copticDate: '\u200F{day} {month}',
-    focChip: 'أب الاعتراف',
-    classChip: 'الفصل',
+    focChip: 'رعيتي',
+    classChip: 'مخدومو فصلي',
   },
 
   tiles: {

@@ -8,7 +8,7 @@ import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
+import { HeaderActions } from '@/components/ui/HeaderActions';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
@@ -598,29 +598,16 @@ export default function DashboardScreen() {
           </TouchableOpacity>
           <View style={{ flex: 1, marginEnd: 12 }}>
             <Text style={styles.subtitle}>{getDashboardSubtitle()}</Text>
-            <Text style={styles.greeting}>{role === 'priest' ? clergyDisplayName(profile?.full_name) : firstName}</Text>
+            <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{role === 'priest' ? clergyDisplayName(profile?.full_name) : firstName}</Text>
             {todayCelebration && (
               <Text style={styles.feastLine}>✝︎ {todayCelebration}</Text>
             )}
           </View>
-          <View style={styles.topbarBtns}>
-            {role === 'priest' && (
-              <TouchableOpacity style={styles.chipBtn} onPress={() => { H.tap(); router.push('/(priest)'); }}>
-                <Text style={styles.chipBtnText}>{T.header.focChip}</Text>
-              </TouchableOpacity>
-            )}
-            {role === 'servant' && (
-              <TouchableOpacity style={styles.chipBtn} onPress={() => { H.tap(); router.push('/(servant)'); }}>
-                <Text style={styles.chipBtnText}>{T.header.classChip}</Text>
-              </TouchableOpacity>
-            )}
+          <HeaderActions>
             <TouchableOpacity style={styles.chipBtn} onPress={enterCustomize}>
               <Text style={styles.chipBtnText}>⊞</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { H.tap(); router.push('/profile'); }}>
-              <Avatar url={profile?.avatar_url} initials={firstName.charAt(0).toUpperCase()} size={34} style={styles.avatarBtn} textStyle={styles.avatarBtnText} />
-            </TouchableOpacity>
-          </View>
+          </HeaderActions>
         </View>
 
         {/* Pinned tile pair — confession + canon */}
@@ -956,11 +943,8 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   topbar: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 },
-  topbarBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   chipBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
   chipBtnText: { fontFamily: fonts.latoBold, fontSize: 10, color: colors.muted, letterSpacing: 1 },
-  avatarBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.goldDim, borderWidth: 1, borderColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
-  avatarBtnText: { fontFamily: fonts.cormorantMedium, fontSize: 16, color: colors.goldLight },
   subtitle: { fontFamily: fonts.latoBold, fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: colors.gold, opacity: 0.7, marginBottom: 4 },
   // textAlign: on web a Text whose first letter is Latin (a name such as
   // "Mark") would otherwise align as a left-to-right paragraph in Arabic.

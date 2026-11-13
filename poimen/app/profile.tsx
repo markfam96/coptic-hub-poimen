@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { HomeButton } from '@/components/ui/HomeButton';
 import * as H from '@/lib/haptics';
 import { goBack } from '@/lib/nav';
 import { useSession } from '@/lib/auth';
@@ -418,10 +419,13 @@ export default function ProfileScreen() {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
       >
-        <TouchableOpacity style={styles.backRow} onPress={() => goBack('/(tabs)')}>
-          <Text style={styles.backArrow}>{GLYPH.back}</Text>
-          <Text style={styles.backText}>{T.back}</Text>
-        </TouchableOpacity>
+        <View style={styles.topRow}>
+          <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => goBack('/(tabs)')}>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{S.common.back}</Text>
+          </TouchableOpacity>
+          <HomeButton />
+        </View>
 
         {/* ── Avatar ── */}
         <View style={styles.avatarSection}>
@@ -879,6 +883,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 24 },
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 

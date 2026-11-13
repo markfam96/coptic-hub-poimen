@@ -9,6 +9,7 @@ import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
@@ -403,7 +404,8 @@ export default function CanonScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>{T.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.title}</Text>
+          <HeaderActions />
         </View>
         <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
@@ -608,6 +610,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
 
   titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleFill: { flex: 1, marginEnd: 12 },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 20, fontStyle: 'italic' },
 

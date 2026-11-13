@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import { HomeButton } from '@/components/ui/HomeButton';
 import { goBack } from '@/lib/nav';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { APP_NAME, APP_NAME_UPPER } from '@/lib/brand';
@@ -327,10 +328,13 @@ export default function RemindersScreen() {
 
 function BackRow() {
   return (
-    <TouchableOpacity style={styles.backRow} onPress={() => goBack('/profile')}>
-      <Text style={styles.backArrow}>{GLYPH.back}</Text>
-      <Text style={styles.backText}>{S.common.back}</Text>
-    </TouchableOpacity>
+    <View style={styles.topRow}>
+      <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => goBack('/profile')}>
+        <Text style={styles.backArrow}>{GLYPH.back}</Text>
+        <Text style={styles.backText}>{S.common.back}</Text>
+      </TouchableOpacity>
+      <HomeButton />
+    </View>
   );
 }
 
@@ -340,6 +344,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 24 },
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 

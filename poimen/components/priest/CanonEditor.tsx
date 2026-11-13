@@ -28,6 +28,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { PencilIcon } from '@/components/ui/TabIcons';
+import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { useSession } from '@/lib/auth';
 import { useDemoMode } from '@/lib/demo';
 import ScrollPicker from '@/components/ui/ScrollPicker';
@@ -587,14 +589,22 @@ export default function CanonEditor({ memberId, memberName }: { memberId?: strin
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        {!templateMode && (
-          <TouchableOpacity style={s.backRow} onPress={() => router.back()}>
-            <Text style={s.backArrow}>{GLYPH.back}</Text><Text style={s.backText}>{displayName}</Text>
-          </TouchableOpacity>
+        {templateMode ? (
+          // The drawer's Canon screen: it had no menu button, so the drawer
+          // could only be opened by swiping from the edge.
+          <View style={s.titleRow}>
+            <DrawerMenuButton />
+            <Text style={[s.pageTitle, s.titleFill]} {...fitTitle}>{T.page.builderTitle}</Text>
+            <HeaderActions />
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity style={s.backRow} onPress={() => router.back()}>
+              <Text style={s.backArrow}>{GLYPH.back}</Text><Text style={s.backText}>{displayName}</Text>
+            </TouchableOpacity>
+            <Text style={s.pageTitle}>{fmt(T.page.memberTitle, { name: displayName.split(' ')[0] })}</Text>
+          </>
         )}
-        <Text style={s.pageTitle}>
-          {templateMode ? T.page.builderTitle : fmt(T.page.memberTitle, { name: displayName.split(' ')[0] })}
-        </Text>
         <Text style={s.pageSub}>
           {templateMode
             ? T.page.builderIntro
@@ -951,6 +961,8 @@ const s = lazyThemed(() => StyleSheet.create({
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 26, color: colors.cream, marginBottom: 6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  titleFill: { flex: 1, marginEnd: 12, marginBottom: 0 },
   pageSub: { fontFamily: fonts.latoLight, fontSize: 12, lineHeight: 18, color: colors.textSecond, marginBottom: SP.lg },
 
   card: { borderWidth: 1, borderColor: colors.border, borderRadius: R.lg, padding: SP.md, marginBottom: SP.sm, backgroundColor: colors.panel },

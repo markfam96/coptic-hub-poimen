@@ -12,6 +12,7 @@ import * as db from '@/lib/db';
 import { useDemoMode } from '@/lib/demo';
 import { encryptForSelf, encryptForRecipient, decryptSelf } from '@/lib/crypto';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { PrivacyNote } from '@/components/ui/PrivacyNote';
 import { PRIVACY_COPY } from '@/lib/privacy-copy';
 import { S, fmt, fmtDate } from '@/lib/i18n';
@@ -220,7 +221,8 @@ export default function PrayerScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>{T.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.title}</Text>
+          <HeaderActions />
         </View>
         <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
@@ -332,6 +334,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
 
   titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleFill: { flex: 1, marginEnd: 12 },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 20 },
 

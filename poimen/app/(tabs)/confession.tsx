@@ -31,6 +31,7 @@ import {
   CandleIcon, CalendarIcon,
 } from '@/components/ui/TabIcons';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { analyzeHistory, recordItems, PatternItem } from '@/lib/confession/patterns';
 import type { SinCategory, SinFrequency, JournalCategory, IncidentCategory, JournalIncident, ExamChecks, GuidanceNote, ConfessionRecord } from '@/lib/confession/types';
 import {
@@ -259,7 +260,8 @@ function Hub({ onNav }: { onNav: (s: SubScreen) => void }) {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>{T.hub.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.hub.title}</Text>
+          <HeaderActions />
         </View>
         <Text style={styles.pageSubtitle}>{T.hub.subtitle}</Text>
 
@@ -1188,6 +1190,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
 
   titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleFill: { flex: 1, marginEnd: 12 },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 20 },
 

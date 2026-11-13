@@ -4,6 +4,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HomeButton } from '@/components/ui/HomeButton';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSession } from '@/lib/auth';
 import * as db from '@/lib/db';
@@ -90,10 +91,13 @@ export default function LinkToFocScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-          <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-            <Text style={styles.backArrow}>{GLYPH.back}</Text>
-            <Text style={styles.backText}>{S.account.backToProfile}</Text>
-          </TouchableOpacity>
+          <View style={styles.topRow}>
+            <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => router.back()}>
+              <Text style={styles.backArrow}>{GLYPH.back}</Text>
+              <Text style={styles.backText}>{S.account.backToProfile}</Text>
+            </TouchableOpacity>
+            <HomeButton />
+          </View>
 
           <Text style={styles.pageTitle}>{title}</Text>
           <Text style={styles.pageSub}>
@@ -170,6 +174,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 24, paddingBottom: 48 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 24 },
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 

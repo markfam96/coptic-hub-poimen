@@ -12,6 +12,15 @@ export const shell = {
     canon: 'Canon',
   },
 
+  // The buttons at the end of every main screen's top bar
+  // (components/ui/HeaderActions.tsx). `profile` is the profile picture's
+  // label for screen readers, and `home` the house
+  // button on Profile and the screens it opens (components/ui/HomeButton.tsx).
+  header: {
+    profile: 'Profile',
+    home: 'Home',
+  },
+
   notFound: {
     title: 'Page not found',
     body: "That link doesn't lead anywhere in Nepsis.",

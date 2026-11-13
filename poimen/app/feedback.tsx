@@ -14,6 +14,7 @@ import {
   Platform, KeyboardAvoidingView, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HomeButton } from '@/components/ui/HomeButton';
 import Constants from 'expo-constants';
 import { goBack } from '@/lib/nav';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
@@ -92,10 +93,13 @@ export default function FeedbackScreen() {
       >
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-          <TouchableOpacity style={styles.backRow} onPress={() => goBack('/profile')}>
-            <Text style={styles.backArrow}>{GLYPH.back}</Text>
-            <Text style={styles.backText}>{S.common.back}</Text>
-          </TouchableOpacity>
+          <View style={styles.topRow}>
+            <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => goBack('/profile')}>
+              <Text style={styles.backArrow}>{GLYPH.back}</Text>
+              <Text style={styles.backText}>{S.common.back}</Text>
+            </TouchableOpacity>
+            <HomeButton />
+          </View>
 
           <Text style={styles.eyebrow}>{APP_NAME_UPPER}</Text>
           <Text style={styles.title}>{T.title}</Text>
@@ -195,6 +199,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 24 },
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 

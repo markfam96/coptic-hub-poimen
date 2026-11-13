@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { useSession } from '@/lib/auth';
 import { useDemoMode } from '@/lib/demo';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import {
   JournalEntry, getJournalEntries, saveJournalEntries, JournalUnavailableError,
   Blessing, getBlessings, saveBlessings, migrateBlessingFlags,
@@ -265,7 +266,8 @@ export default function JournalScreen() {
 
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>{T.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.title}</Text>
+          <HeaderActions />
         </View>
         <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
@@ -450,6 +452,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
 
   titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleFill: { flex: 1, marginEnd: 12 },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 20 },
 

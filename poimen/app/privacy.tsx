@@ -1,9 +1,13 @@
 import React from 'react';
-import { ScrollView, View, Text, StyleSheet, Platform } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { APP_NAME, APP_NAME_UPPER } from '@/lib/brand';
-import { S, fmt, fmtDate } from '@/lib/i18n';
+import { S, fmt, fmtDate, GLYPH } from '@/lib/i18n';
+import { useSession } from '@/lib/auth';
+import { useDemoMode } from '@/lib/demo';
+import { goBack } from '@/lib/nav';
+import { HomeButton } from '@/components/ui/HomeButton';
 
 const T = S.privacy.policy;
 
@@ -17,9 +21,24 @@ const BUNDLE_ID = 'com.coptic.poimen';
 const t = (text: string) => fmt(text, { app: APP_NAME });
 
 export default function PrivacyScreen() {
+  // Inside the app (opened from Profile) the policy gets Back and Home.
+  // Read from the sign-in screen or as a public web page it stands alone.
+  const { session } = useSession();
+  const { demoMode } = useDemoMode();
+  const inApp = !!session || demoMode;
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+
+        {inApp && (
+          <View style={styles.topRow}>
+            <TouchableOpacity style={styles.backRow} onPress={() => goBack('/profile')}>
+              <Text style={styles.backArrow}>{GLYPH.back}</Text>
+              <Text style={styles.backText}>{S.common.back}</Text>
+            </TouchableOpacity>
+            <HomeButton />
+          </View>
+        )}
 
         <Text style={styles.eyebrow}>{APP_NAME_UPPER} · {BUNDLE_ID}</Text>
         <Text style={styles.title}>{T.title}</Text>
@@ -123,6 +142,12 @@ const styles = lazyThemed(() => StyleSheet.create({
     width: '100%' as any,
     alignSelf: 'center' as any,
   },
+
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
+  backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
 
   eyebrow: {
     fontFamily: fonts.latoBold,

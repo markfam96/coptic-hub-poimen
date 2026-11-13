@@ -4,6 +4,7 @@ import * as H from '@/lib/haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
+import { HeaderActions } from '@/components/ui/HeaderActions';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { latestConfessionMs, daysSinceMs } from '@/lib/confession/dates';
 import { Card } from '@/components/ui/Card';
@@ -155,9 +156,7 @@ export default function FlockScreen() {
               <Text style={styles.pageSubtitle}>{fmt(T.subtitle, { date: today, name: greeting })}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.switchBtn} onPress={() => router.push('/(tabs)')}>
-            <Text style={styles.switchBtnText}>{T.myView}</Text>
-          </TouchableOpacity>
+          <HeaderActions />
         </View>
 
         <Text style={styles.flockMeta}>
@@ -336,8 +335,6 @@ const styles = lazyThemed(() => StyleSheet.create({
   menuBtnText: { fontFamily: fonts.lato, fontSize: 16, color: colors.gold },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 11, color: colors.muted, marginTop: 4 },
-  switchBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  switchBtnText: { fontFamily: fonts.latoBold, fontSize: 9, color: colors.muted, letterSpacing: 1.5 },
 
   flockMeta: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 18, marginTop: -12 },
 

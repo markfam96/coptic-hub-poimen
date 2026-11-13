@@ -9,6 +9,7 @@ import { ScrollView, View, Text, StyleSheet, TouchableOpacity, TextInput, Activi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
 import ScrollPicker from '@/components/ui/ScrollPicker';
@@ -540,7 +541,8 @@ export default function ScheduleScreen() {
             onPress={() => { H.tap(); navigation.dispatch(DrawerActions.openDrawer()); }}>
             <Text style={styles.chipBtnText}>☰</Text>
           </TouchableOpacity>
-          <Text style={styles.pageTitle}>{T.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.title}</Text>
+          <HeaderActions />
         </View>
 
         {/* Booking mode — one place members book, never two. Two live systems
@@ -1002,6 +1004,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   topbar: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  titleFill: { flex: 1, marginEnd: 12 },
   chipBtn: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   chipBtnText: { fontSize: 18, color: colors.gold },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream },

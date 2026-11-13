@@ -6,11 +6,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { takeHomeRequest } from '@/lib/home-request';
+import { HeaderArea } from '@/components/ui/HeaderActions';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
 import { S, isRTL } from '@/lib/i18n';
-import { CongregationIcon, PersonIcon, CandleIcon, CrossIcon, CalendarIcon } from '@/components/ui/TabIcons';
+import { CongregationIcon, CandleIcon, CrossIcon, CalendarIcon } from '@/components/ui/TabIcons';
 
 const T = S.priest.nav;
 
@@ -40,8 +42,15 @@ type IconProps = { color: string };
 
 export default function PriestLayout() {
   return (
+    <HeaderArea.Provider value="priest">
     <Drawer
       drawerContent={CustomDrawerContent}
+      // Profile and the screens it opens have a house button that returns
+      // here and asks for this area's first screen
+      // (components/ui/HomeButton.tsx).
+      screenListeners={({ navigation, route }) => ({
+        focus: () => { if (takeHomeRequest() && route.name !== 'index') navigation.navigate('index'); },
+      })}
       screenOptions={{
         headerShown: false,
         swipeEnabled: true,
@@ -64,9 +73,11 @@ export default function PriestLayout() {
         title: T.schedule,
         drawerIcon: ({ color }: IconProps) => <CalendarIcon size={20} color={color} />,
       }} />
+      {/* One member's page — always opened from their row in My Flock with
+          their id. From the menu it showed whichever member was last open. */}
       <Drawer.Screen name="member" options={{
         title: T.member,
-        drawerIcon: ({ color }: IconProps) => <PersonIcon size={20} color={color} />,
+        drawerItemStyle: { display: 'none' },
       }} />
       <Drawer.Screen name="canon-templates" options={{
         title: T.canon,
@@ -83,6 +94,7 @@ export default function PriestLayout() {
         drawerIcon: ({ color }: IconProps) => <CrossIcon size={20} color={color} />,
       }} />
     </Drawer>
+    </HeaderArea.Provider>
   );
 }
 

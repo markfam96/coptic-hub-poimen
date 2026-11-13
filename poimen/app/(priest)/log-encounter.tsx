@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { HeaderActions } from '@/components/ui/HeaderActions';
 import { colors, fonts , lazyThemed } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
 import {
@@ -150,10 +151,13 @@ export default function LogEncounterScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
 
-        <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-          <Text style={styles.backArrow}>{GLYPH.back}</Text>
-          <Text style={styles.backText}>{SHARED.myFlock}</Text>
-        </TouchableOpacity>
+        <View style={styles.topRow}>
+          <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => router.back()}>
+            <Text style={styles.backArrow}>{GLYPH.back}</Text>
+            <Text style={styles.backText}>{SHARED.myFlock}</Text>
+          </TouchableOpacity>
+          <HeaderActions />
+        </View>
 
         <Text style={styles.pageTitle}>{T.title}</Text>
         <Text style={styles.pageSub}>{fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</Text>
@@ -305,6 +309,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+  // The back link and the header actions share one bar.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontFamily: fonts.cormorant, fontSize: 22, color: colors.gold },
   backText: { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 26, color: colors.cream, marginBottom: 4 },

@@ -6,10 +6,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { takeHomeRequest } from '@/lib/home-request';
+import { HeaderArea } from '@/components/ui/HeaderActions';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
-import { CongregationIcon, PersonIcon, CandleIcon } from '@/components/ui/TabIcons';
+import { CongregationIcon } from '@/components/ui/TabIcons';
 import { S, isRTL } from '@/lib/i18n';
 
 const T = S.servant.drawer;
@@ -40,8 +42,15 @@ type IconProps = { color: string };
 
 export default function ServantLayout() {
   return (
+    <HeaderArea.Provider value="servant">
     <Drawer
       drawerContent={CustomDrawerContent}
+      // Profile and the screens it opens have a house button that returns
+      // here and asks for this area's first screen
+      // (components/ui/HomeButton.tsx).
+      screenListeners={({ navigation, route }) => ({
+        focus: () => { if (takeHomeRequest() && route.name !== 'index') navigation.navigate('index'); },
+      })}
       screenOptions={{
         headerShown: false,
         swipeEnabled: true,
@@ -60,15 +69,20 @@ export default function ServantLayout() {
         title: T.students,
         drawerIcon: ({ color }: IconProps) => <CongregationIcon size={20} color={color} />,
       }} />
+      {/* One student's page, and assigning that student a canon — always
+          opened from the student with their id. From the menu they showed
+          whichever student was last open, or a canon form with no student
+          to save it to. */}
       <Drawer.Screen name="student" options={{
         title: T.student,
-        drawerIcon: ({ color }: IconProps) => <PersonIcon size={20} color={color} />,
+        drawerItemStyle: { display: 'none' },
       }} />
       <Drawer.Screen name="assign-canon" options={{
         title: T.canon,
-        drawerIcon: ({ color }: IconProps) => <CandleIcon size={20} color={color} />,
+        drawerItemStyle: { display: 'none' },
       }} />
     </Drawer>
+    </HeaderArea.Provider>
   );
 }
 

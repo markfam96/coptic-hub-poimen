@@ -7,6 +7,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { takeHomeRequest } from '@/lib/home-request';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
@@ -44,6 +45,12 @@ export default function DrawerLayout() {
   return (
     <Drawer
       drawerContent={CustomDrawerContent}
+      // Profile and the screens it opens have a house button that returns
+      // here and asks for this area's first screen
+      // (components/ui/HomeButton.tsx).
+      screenListeners={({ navigation, route }) => ({
+        focus: () => { if (takeHomeRequest() && route.name !== 'index') navigation.navigate('index'); },
+      })}
       screenOptions={{
         headerShown: false,
         swipeEnabled: true,

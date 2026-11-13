@@ -30,6 +30,7 @@ import {
 } from '@/lib/psalms/psalter';
 import { hydratePsalmsFromCloud, pushPsalmsToCloud } from '@/lib/psalms/sync';
 import { DrawerMenuButton } from '@/components/ui/DrawerMenuButton';
+import { HeaderActions, fitTitle } from '@/components/ui/HeaderActions';
 import { S, fmt, plural, GLYPH, isRTL, ltrText, directionStyle } from '@/lib/i18n';
 
 const T = S.psalms;
@@ -508,7 +509,8 @@ export default function PsalmsScreen() {
       <ScrollView contentContainerStyle={{ padding: SP.lg, paddingBottom: 32 }}>
         <View style={styles.titleRow}>
           <DrawerMenuButton />
-          <Text style={styles.pageTitle}>{T.title}</Text>
+          <Text style={[styles.pageTitle, styles.titleFill]} {...fitTitle}>{T.title}</Text>
+          <HeaderActions />
         </View>
         <Text style={styles.pageSubtitle}>{T.subtitle}</Text>
 
@@ -701,6 +703,7 @@ const styles = lazyThemed(() => StyleSheet.create({
   muted:  { fontFamily: fonts.latoLight, fontSize: 13, color: colors.muted, marginBottom: SP.sm },
 
   titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleFill: { flex: 1, marginEnd: 12 },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
   pageSubtitle: { fontFamily: fonts.latoLight, fontSize: 12, color: colors.muted, marginBottom: 20, fontStyle: 'italic' },
 

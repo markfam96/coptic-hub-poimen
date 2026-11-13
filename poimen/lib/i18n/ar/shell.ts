@@ -13,6 +13,11 @@ export const shell: Localized<typeof En> = {
     canon: 'القانون الروحي',
   },
 
+  header: {
+    profile: 'الملف الشخصي',
+    home: 'الرئيسية',
+  },
+
   notFound: {
     title: 'الصفحة غير موجودة',
     body: 'هذا الرابط لا يؤدي إلى أي مكان في Nepsis.',

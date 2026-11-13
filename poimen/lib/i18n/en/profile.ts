@@ -1,8 +1,5 @@
 // The Profile screen (app/profile.tsx).
 export const profile = {
-  // Back link at the top.
-  back: 'Home',
-
   photo: {
     camera: '◉ Camera',
     change: '▤ Change Photo',

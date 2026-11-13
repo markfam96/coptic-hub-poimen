@@ -12,8 +12,10 @@ export const home = {
     subtitle: '{date} · {coptic}',
     subtitleFast: '{date} · {coptic} · {fast} · Day {day}',
     copticDate: '{day} {month}',
-    focChip: 'FOC',
-    classChip: 'CLASS',
+    // The switch to a priest's / servant's dashboard, named after the screen
+    // it opens (components/ui/HeaderActions.tsx).
+    focChip: 'MY FLOCK',
+    classChip: 'MY STUDENTS',
   },
 
   // The pinned pair at the top. Each label sits under a large number.

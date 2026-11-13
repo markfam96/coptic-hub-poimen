@@ -7,6 +7,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HomeButton } from '@/components/ui/HomeButton';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/lib/auth';
 import { colors, fonts, lazyThemed } from '@/lib/theme';
@@ -44,10 +45,13 @@ export default function DeleteAccountScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity style={styles.backRow} onPress={() => router.back()} disabled={working}>
-            <Text style={styles.backArrow}>{GLYPH.back}</Text>
-            <Text style={styles.backText}>{S.account.backToProfile}</Text>
-          </TouchableOpacity>
+          <View style={styles.topRow}>
+            <TouchableOpacity style={[styles.backRow, styles.backRowInBar]} onPress={() => router.back()} disabled={working}>
+              <Text style={styles.backArrow}>{GLYPH.back}</Text>
+              <Text style={styles.backText}>{S.account.backToProfile}</Text>
+            </TouchableOpacity>
+            <HomeButton disabled={working} />
+          </View>
 
           <Text style={styles.pageTitle}>{T.title}</Text>
           <Text style={styles.body}>
@@ -101,6 +105,9 @@ const styles = lazyThemed(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.navy },
   content: { padding: 24, paddingBottom: 60, gap: 10 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  // Back on one side, the house button on the other.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  backRowInBar: { marginBottom: 0, flexShrink: 1 },
   backArrow: { fontSize: 24, color: colors.gold, lineHeight: 26 },
   backText: { fontFamily: fonts.latoBold, fontSize: 13, color: colors.gold },
   pageTitle: { fontFamily: fonts.cormorantMedium, fontSize: 28, color: colors.cream, marginBottom: 4 },
